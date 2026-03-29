@@ -1,0 +1,4 @@
+interface:
+  display_name: "WHRS ORC Architect"
+  short_description: "Plans calculation-first WHRS ORC architecture."
+  default_prompt: "Use $whrs-orc-architect to plan or refactor the WHRS ORC application with clear module boundaries, continuity docs, and a calculation-first architecture."

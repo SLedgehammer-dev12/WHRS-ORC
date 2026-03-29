@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "whrs-orc"
+version = "0.2.0"
+description = "Calculation-first WHRS ORC screening application for gas turbine exhaust heat recovery."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+  { name = "OpenAI Codex with project owner" }
+]
+keywords = ["orc", "whrs", "waste-heat-recovery", "thermal-oil", "screening"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: Other/Proprietary License",
+  "Operating System :: Microsoft :: Windows",
+  "Topic :: Scientific/Engineering",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

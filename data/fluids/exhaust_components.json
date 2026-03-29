@@ -1,0 +1,112 @@
+﻿[
+  {
+    "id": "N2",
+    "display_name": "Nitrogen",
+    "coolprop_name": "Nitrogen",
+    "thermo_name": "nitrogen",
+    "thermopack_name": "N2",
+    "mw": 28.0134,
+    "cp_a": 1030.0,
+    "cp_b": 0.08
+  },
+  {
+    "id": "O2",
+    "display_name": "Oxygen",
+    "coolprop_name": "Oxygen",
+    "thermo_name": "oxygen",
+    "thermopack_name": "O2",
+    "mw": 31.998,
+    "cp_a": 918.0,
+    "cp_b": 0.18
+  },
+  {
+    "id": "CO2",
+    "display_name": "Carbon Dioxide",
+    "coolprop_name": "CarbonDioxide",
+    "thermo_name": "carbon dioxide",
+    "thermopack_name": "CO2",
+    "mw": 44.0095,
+    "cp_a": 800.0,
+    "cp_b": 0.85
+  },
+  {
+    "id": "H2O",
+    "display_name": "Water Vapor",
+    "coolprop_name": "Water",
+    "thermo_name": "water",
+    "thermopack_name": "H2O",
+    "mw": 18.0153,
+    "cp_a": 1860.0,
+    "cp_b": 0.22
+  },
+  {
+    "id": "Ar",
+    "display_name": "Argon",
+    "coolprop_name": "Argon",
+    "thermo_name": "argon",
+    "thermopack_name": "AR",
+    "mw": 39.948,
+    "cp_a": 520.0,
+    "cp_b": 0.0
+  },
+  {
+    "id": "CO",
+    "display_name": "Carbon Monoxide",
+    "coolprop_name": "CarbonMonoxide",
+    "thermo_name": "carbon monoxide",
+    "thermopack_name": null,
+    "mw": 28.0101,
+    "cp_a": 1030.0,
+    "cp_b": 0.11
+  },
+  {
+    "id": "CH4",
+    "display_name": "Methane",
+    "coolprop_name": "Methane",
+    "thermo_name": "methane",
+    "thermopack_name": null,
+    "mw": 16.0425,
+    "cp_a": 2050.0,
+    "cp_b": 1.4
+  },
+  {
+    "id": "H2",
+    "display_name": "Hydrogen",
+    "coolprop_name": "Hydrogen",
+    "thermo_name": "hydrogen",
+    "thermopack_name": null,
+    "mw": 2.01588,
+    "cp_a": 14300.0,
+    "cp_b": 0.35
+  },
+  {
+    "id": "SO2",
+    "display_name": "Sulfur Dioxide",
+    "coolprop_name": null,
+    "thermo_name": "sulfur dioxide",
+    "thermopack_name": null,
+    "mw": 64.066,
+    "cp_a": 620.0,
+    "cp_b": 0.55
+  },
+  {
+    "id": "NO",
+    "display_name": "Nitric Oxide",
+    "coolprop_name": null,
+    "thermo_name": "nitric oxide",
+    "thermopack_name": null,
+    "mw": 30.0061,
+    "cp_a": 960.0,
+    "cp_b": 0.12
+  },
+  {
+    "id": "NO2",
+    "display_name": "Nitrogen Dioxide",
+    "coolprop_name": null,
+    "thermo_name": "nitrogen dioxide",
+    "thermopack_name": null,
+    "mw": 46.0055,
+    "cp_a": 780.0,
+    "cp_b": 0.45
+  }
+]

@@ -1,0 +1,4 @@
+interface:
+  display_name: "WHRS ORC Thermal Guardian"
+  short_description: "Guards thermal accuracy, units, and solver checks."
+  default_prompt: "Use $whrs-orc-thermal-calculation-guardian to define or review WHRS ORC equations, property strategy, unit consistency, and engineering validation rules before implementation."

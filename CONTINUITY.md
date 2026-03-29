@@ -116,6 +116,10 @@ The project priority is calculation correctness first, then operator usability, 
   - `CHANGELOG.md`
   - `.gitignore`
   - `pyproject.toml`
+- The project now also has a published public GitHub home:
+  - repository: `https://github.com/SLedgehammer-dev12/WHRS-ORC`
+  - tagged release: `v0.2.0`
+  - uploaded release asset: `whrs-orc-v0.2.0.zip`
 - Two project-local skills were created:
   - `whrs-orc-architect`
   - `whrs-orc-thermal-calculation-guardian`
@@ -160,7 +164,7 @@ Translate the current screening baseline into a more complete engineering produc
    - structured logging and saved-case schema
    - deeper interaction over the process diagram if the desktop shell remains the chosen path
    - decide whether manual fluid-property overrides should also move onto the diagram
-   - create the remote GitHub repository and release once authentication is available
+   - maintain release discipline for future tags now that the first public repo and release exist
 
 ## Open decisions
 

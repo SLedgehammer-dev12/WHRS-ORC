@@ -124,6 +124,10 @@
   - JSON payload export containing case inputs, KPI summary, guidance, and module results
 - The project is now release-prepared at the local folder level:
   - README, changelog, package metadata, and ignore rules are present
+- The project is now published on GitHub:
+  - public repository: `https://github.com/SLedgehammer-dev12/WHRS-ORC`
+  - public release: `https://github.com/SLedgehammer-dev12/WHRS-ORC/releases/tag/v0.2.0`
+  - release asset: `whrs-orc-v0.2.0.zip`
 - The main development priorities are explicit:
   - correctness first
   - architecture before coding
@@ -137,7 +141,7 @@
   - richer detailed flowsheet interactions beyond the current screening diagram
   - diagram-level handling for remaining advanced inputs if needed
 - Prepare a clean local git repository and release asset bundle.
-- Push to GitHub and create the remote release once GitHub authentication tooling is available.
+- Continue with persistence, saved-case files, and structured logging now that the first public release is published.
 
 ## Watchouts
 

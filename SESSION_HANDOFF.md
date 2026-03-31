@@ -68,6 +68,10 @@
   - `src/whrs_orc/persistence/__init__.py`
   - `src/whrs_orc/logging/run_logger.py`
   - `src/whrs_orc/logging/__init__.py`
+- Added UI stream-palette support:
+  - `src/whrs_orc/ui/stream_palette.py`
+- Added new UI color/palette tests:
+  - `tests/test_stream_palette.py`
 - Added release-readiness root files:
   - `README.md`
   - `CHANGELOG.md`
@@ -132,6 +136,11 @@
   - saved case documents with schema version, app version, source label, and note
   - structured JSONL screening run logs under `data/logs/screening_runs.jsonl`
   - UI wiring for `Vaka Ac`, `Vaka Kaydet`, and automatic solve logging
+- The process diagram is now visually stronger:
+  - larger process canvas and wider spacing around the schematic
+  - more detailed boiler, condenser, pump, and stack drawing
+  - fluid-specific cold-to-hot gradients so exhaust, thermal oil, and ORC fluid are not visually confused
+  - legend now shows per-fluid cold-to-hot palette ramps instead of single flat colors
 - The project is now release-prepared at the local folder level:
   - README, changelog, package metadata, and ignore rules are present
 - The project is now published on GitHub:
@@ -153,6 +162,7 @@
 - Prepare a clean local git repository and release asset bundle.
 - Continue with persistence, saved-case files, and structured logging now that the first public release is published.
 - Push the new persistence/logging slice to GitHub after review.
+- Consider the next UI pass for animated flow direction and click/hover equipment detail now that fluid palettes and larger schematic layout exist.
 
 ## Watchouts
 
@@ -168,4 +178,4 @@
 ## Tests run
 
 - `python -m unittest discover -s tests`
-- Status: `44 tests passed`
+- Status: `48 tests passed`

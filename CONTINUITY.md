@@ -98,6 +98,9 @@ The project priority is calculation correctness first, then operator usability, 
 - Structured solve-log rules were extracted into a pure helper layer:
   - `logging/run_logger.py`
   - covered by dedicated unit tests
+- Stream palette and fluid-visual rules were extracted into a pure helper layer:
+  - `ui/stream_palette.py`
+  - covered by dedicated unit tests
 - The ORC side is intentionally simplified for the first release:
   - calculate absorbed ORC heat
   - calculate supported working-fluid temperature gain
@@ -119,6 +122,9 @@ The project priority is calculation correctness first, then operator usability, 
   - exporting a Markdown study report
   - exporting a JSON bundle with case inputs, guidance, KPIs, and result envelopes
   - automatically appending screening run logs to `data/logs/screening_runs.jsonl`
+  - a larger and more detailed process schematic
+  - fluid-specific cold-to-hot palettes for exhaust gas, thermal oil, and working fluid
+  - palette legend ramps so users can distinguish fluids without color confusion
 - The root folder now includes release-readiness files:
   - `README.md`
   - `CHANGELOG.md`
@@ -168,11 +174,12 @@ Translate the current screening baseline into a more complete engineering produc
 2. prepare benchmark cases and validation thresholds
 3. add saved benchmark datasets and reference cases to the test suite
 4. begin the next implementation slice:
-   - deeper interaction over the process diagram if the desktop shell remains the chosen path
-   - decide whether manual fluid-property overrides should also move onto the diagram
-   - maintain release discipline for future tags now that the first public repo and release exist
-   - define backward-compatibility rules for future saved-case schema changes
-   - decide whether export and solve logs should gain richer plant/site metadata
+    - deeper interaction over the process diagram if the desktop shell remains the chosen path
+    - decide whether manual fluid-property overrides should also move onto the diagram
+    - maintain release discipline for future tags now that the first public repo and release exist
+    - define backward-compatibility rules for future saved-case schema changes
+    - decide whether export and solve logs should gain richer plant/site metadata
+    - add animated flow direction and equipment detail interactions on top of the new palette-aware schematic
 
 ## Open decisions
 

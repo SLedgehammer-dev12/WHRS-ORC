@@ -30,6 +30,7 @@ from whrs_orc.ui.diagram_units import (
 from whrs_orc.ui.operator_guidance import build_operator_guidance, render_operator_guidance
 from whrs_orc.ui.process_diagram import build_empty_process_snapshot, build_process_snapshot, status_color
 from whrs_orc.ui.presets import DEFAULT_EXHAUST_COMPOSITION, WORKING_FLUID_PRESETS
+from whrs_orc.ui.stream_palette import colors_for_temperature_span, fluid_gradient, gradient_swatch_colors
 from whrs_orc.ui.view_model import build_ui_behavior_state
 
 
@@ -42,8 +43,8 @@ class WHRSOrcApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("WHRS ORC Arayuz")
-        self.geometry("1840x1180")
-        self.minsize(1560, 960)
+        self.geometry("1980x1280")
+        self.minsize(1700, 1040)
         self.configure(bg="#f3efe6")
         DEFAULT_CASES_DIR.mkdir(parents=True, exist_ok=True)
         DEFAULT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -149,6 +150,7 @@ class WHRSOrcApp(tk.Tk):
         self.oil_property_entries: list[ttk.Entry] = []
         self.wf_property_entries: list[ttk.Entry] = []
         self.diagram_stage_items: dict[str, dict[str, int]] = {}
+        self.diagram_stream_items: dict[str, list[int]] = {}
         self.diagram_input_fields: dict[str, dict[str, object]] = {}
         self.diagram_design_target_field: dict[str, object] | None = None
         self.diagram_composition_fields: dict[str, dict[str, object]] = {}
@@ -328,10 +330,10 @@ class WHRSOrcApp(tk.Tk):
         ttk.Label(process_strip, textvariable=self.process_var, style="Process.TLabel", wraplength=1320, justify="left").pack(anchor="w", pady=(4, 4))
         ttk.Label(
             process_strip,
-            text="Process kutularindan giris yapabilirsiniz. Her kutuda birim secimi vardir; girisler solve oncesi otomatik taban birimlere donusturulur.",
+            text="Process kutularindan giris yapabilirsiniz. Her kutuda birim secimi vardir; girisler solve oncesi otomatik taban birimlere donusturulur. Her akiskan ailesi kendi soguk-sicak renk gecisi ile cizilir.",
             style="DiagramHint.TLabel",
         ).pack(anchor="w", pady=(0, 8))
-        self.process_canvas = tk.Canvas(process_strip, height=760, bg="#fbf7ef", highlightthickness=0, bd=0)
+        self.process_canvas = tk.Canvas(process_strip, height=880, bg="#fbf7ef", highlightthickness=0, bd=0)
         self.process_canvas.pack(fill="x")
         self._draw_process_scene()
         self._build_process_input_boxes()
@@ -339,9 +341,9 @@ class WHRSOrcApp(tk.Tk):
         self._build_exhaust_composition_box()
         legend = ttk.Frame(process_strip, style="Panel.TFrame")
         legend.pack(fill="x", pady=(8, 0))
-        self._legend_item(legend, "Exhaust gas", "#de2f2f")
-        self._legend_item(legend, "Thermal oil", "#6a39a8")
-        self._legend_item(legend, "Organic fluid", "#f1b400")
+        self._legend_gradient_item(legend, "exhaust")
+        self._legend_gradient_item(legend, "oil")
+        self._legend_gradient_item(legend, "working_fluid")
         self._legend_item(legend, "Electrical power", "#134f95")
         self._legend_item(legend, "Success", status_color("success"))
         self._legend_item(legend, "Warning", status_color("warning"))
@@ -399,6 +401,19 @@ class WHRSOrcApp(tk.Tk):
         swatch.pack(side="left")
         swatch.create_rectangle(2, 2, 14, 14, fill=color, outline=color)
         ttk.Label(item, text=label, style="Soft.TLabel").pack(side="left", padx=(5, 0))
+
+    def _legend_gradient_item(self, parent: ttk.Frame, fluid_key: str) -> None:
+        palette = fluid_gradient(fluid_key)
+        item = ttk.Frame(parent, style="Panel.TFrame")
+        item.pack(side="left", padx=(0, 16))
+        swatch = tk.Canvas(item, width=68, height=16, bg="#fffaf0", highlightthickness=0, bd=0)
+        swatch.pack(side="left")
+        colors = gradient_swatch_colors(fluid_key, steps=6)
+        for index, color in enumerate(colors):
+            swatch.create_rectangle(4 + index * 10, 3, 12 + index * 10, 13, fill=color, outline=color)
+        swatch.create_text(6, 8, text="C", fill="#21312b", font=("Segoe UI", 7, "bold"))
+        swatch.create_text(60, 8, text="H", fill="#21312b", font=("Segoe UI", 7, "bold"))
+        ttk.Label(item, text=f"{palette.label}  cold -> hot", style="Soft.TLabel").pack(side="left", padx=(6, 0))
 
     def _build_process_input_boxes(self) -> None:
         if self.process_canvas is None:
@@ -468,7 +483,7 @@ class WHRSOrcApp(tk.Tk):
         combo.pack(side="left", padx=(6, 0))
         hint = tk.Label(frame, text="", bg="#fffdfa", fg="#6f7d75", font=("Segoe UI", 7))
         hint.pack(anchor="w", pady=(3, 0))
-        self.process_canvas.create_window(1260, 248, anchor="nw", window=frame)
+        self.process_canvas.create_window(1460, 268, anchor="nw", window=frame)
         self.diagram_design_target_field = {
             "frame": frame,
             "title": title,
@@ -526,7 +541,7 @@ class WHRSOrcApp(tk.Tk):
             combo.bind("<<ComboboxSelected>>", lambda _event, component_id=component: self._on_composition_unit_changed(component_id))
         self.diagram_composition_total_label = tk.Label(frame, text="Total = --", bg="#fffdfa", fg="#6f7d75", font=("Segoe UI Semibold", 7))
         self.diagram_composition_total_label.pack(anchor="w", pady=(4, 0))
-        self.process_canvas.create_window(20, 412, anchor="nw", window=frame)
+        self.process_canvas.create_window(20, 446, anchor="nw", window=frame)
 
     def _bind_base_state_sync(self) -> None:
         for key, variable in self._base_state_vars.items():
@@ -542,6 +557,7 @@ class WHRSOrcApp(tk.Tk):
             self._sync_single_composition_field(component)
         self._update_composition_total_display()
         self._sync_design_target_field()
+        self._update_process_stream_colors()
 
     def _sync_single_state_to_diagram_field(self, key: str) -> None:
         field = self.diagram_input_fields.get(key)
@@ -560,6 +576,7 @@ class WHRSOrcApp(tk.Tk):
             return
         field["display_var"].set(format_for_display(spec.quantity, display_value))
         field["hint"].configure(text=unit)
+        self._update_process_stream_colors()
 
     def _commit_diagram_field(self, key: str, *, show_error: bool = True):
         field = self.diagram_input_fields.get(key)
@@ -648,6 +665,7 @@ class WHRSOrcApp(tk.Tk):
         display_value = convert_from_base(quantity, float(raw), unit_var.get())
         self.diagram_design_target_field["display_var"].set(format_for_display(quantity, display_value))
         self.diagram_design_target_field["hint"].configure(text=unit_var.get())
+        self._update_process_stream_colors()
 
     def _commit_design_target_field(self, *, show_error: bool = True):
         if self.diagram_design_target_field is None:
@@ -674,51 +692,55 @@ class WHRSOrcApp(tk.Tk):
             return
         canvas = self.process_canvas
         canvas.delete("all")
-        canvas.configure(width=1500)
+        canvas.configure(width=1720)
         self.diagram_stage_items = {}
+        self.diagram_stream_items = {}
 
-        exhaust_color = "#de2f2f"
-        oil_color = "#6a39a8"
-        wf_color = "#f1b400"
+        exhaust_hot = fluid_gradient("exhaust").hot_color
+        oil_hot = fluid_gradient("oil").hot_color
+        wf_hot = fluid_gradient("working_fluid").hot_color
         power_color = "#134f95"
         metal = "#123f7a"
         text_dark = "#17322b"
         panel_bg = "#fbf7ef"
 
-        canvas.create_text(72, 315, text="FACTORY", fill=metal, font=("Georgia", 19, "bold"))
-        canvas.create_text(240, 318, text="HOT EXHAUST GAS", fill=exhaust_color, font=("Segoe UI Semibold", 9))
-        canvas.create_text(425, 22, text="OIL CIRCUIT", fill=oil_color, font=("Segoe UI Semibold", 9))
-        canvas.create_text(555, 22, text="ORGANIC FLUID CIRCUIT", fill=wf_color, font=("Segoe UI Semibold", 9))
-        canvas.create_text(786, 44, text="GRID", fill=metal, font=("Segoe UI Semibold", 9))
-        canvas.create_text(778, 136, text="SELF\nCONSUMPTION", fill=metal, font=("Segoe UI Semibold", 8), justify="center")
-        canvas.create_text(220, 266, text="Stack / outlet", fill="#6f7d75", font=("Segoe UI", 8))
-        canvas.create_text(384, 54, text="Oil supply", fill="#6f7d75", font=("Segoe UI", 8))
-        canvas.create_text(540, 294, text="WF condensation", fill="#6f7d75", font=("Segoe UI", 8))
-        canvas.create_text(634, 176, text="Electric power export", fill="#6f7d75", font=("Segoe UI", 8))
+        canvas.create_text(72, 318, text="FACTORY", fill=metal, font=("Georgia", 21, "bold"))
+        canvas.create_text(252, 332, text="EXHAUST GAS CIRCUIT", fill=exhaust_hot, font=("Segoe UI Semibold", 10))
+        canvas.create_text(438, 22, text="THERMAL OIL CIRCUIT", fill=oil_hot, font=("Segoe UI Semibold", 10))
+        canvas.create_text(604, 20, text="ORGANIC FLUID CIRCUIT", fill=wf_hot, font=("Segoe UI Semibold", 10))
+        canvas.create_text(812, 40, text="GRID", fill=metal, font=("Segoe UI Semibold", 9))
+        canvas.create_text(804, 138, text="SELF\nUSE", fill=metal, font=("Segoe UI Semibold", 8), justify="center")
+        canvas.create_text(246, 26, text="STACK", fill="#6f7d75", font=("Segoe UI", 8))
+        canvas.create_text(392, 58, text="Oil supply header", fill="#6f7d75", font=("Segoe UI", 8))
+        canvas.create_text(618, 286, text="Heat rejection + condensate return", fill="#6f7d75", font=("Segoe UI", 8))
+        canvas.create_text(646, 174, text="Electric power export", fill="#6f7d75", font=("Segoe UI", 8))
+        canvas.create_text(300, 260, text="Duty transfer zone", fill="#6f7d75", font=("Segoe UI", 8))
 
         self._draw_factory_icon(canvas, 42, 110, metal)
         self._register_stage_texts(canvas, "factory", "Factory", 72, 96, 72, 210, panel_bg, text_dark)
-        self._draw_exhaust_loop(canvas, exhaust_color)
-        self._draw_oil_loop(canvas, oil_color)
-        self._draw_wf_loop(canvas, wf_color)
+        self._draw_stack_icon(canvas, 332, 6, metal)
+        self._draw_exhaust_loop(canvas)
+        self._draw_oil_loop(canvas)
+        self._draw_wf_loop(canvas)
         self._draw_power_path(canvas, power_color)
 
         self._register_round_rect_stage("boiler", canvas, 220, 58, 292, 220, "Boiler", metal, panel_bg, text_dark)
-        self._draw_boiler_core(canvas, 220, 58, 292, 220, exhaust_color, oil_color)
+        self._draw_boiler_core(canvas, 220, 58, 292, 220, exhaust_hot, oil_hot)
         self._register_capsule_stage("heat_exchanger", canvas, 350, 70, 452, 120, "Heat Exchanger", metal, panel_bg, text_dark)
-        self._draw_heat_exchanger_core(canvas, 350, 70, 452, 120, wf_color)
+        self._draw_heat_exchanger_core(canvas, 350, 70, 452, 120, wf_hot)
         self._register_turbine_stage(canvas, 492, 76, 580, 138, "turbine", "Turbine", metal, panel_bg, text_dark)
         self._register_rect_stage("generator", canvas, 607, 83, 698, 131, "Generator", metal, panel_bg, text_dark)
         self._register_capsule_stage("regenerator", canvas, 550, 206, 690, 250, "Regenerator", metal, panel_bg, text_dark)
-        self._draw_heat_exchanger_core(canvas, 550, 206, 690, 250, wf_color)
+        self._draw_heat_exchanger_core(canvas, 550, 206, 690, 250, wf_hot)
         self._register_condenser_stage(canvas, 575, 275, 685, 340, "condenser", "Air Condenser", metal, panel_bg, text_dark)
         self._register_pump_stage("oil_pump", canvas, 335, 226, "Oil Pump", metal, panel_bg, text_dark)
         self._register_pump_stage("organic_pump", canvas, 458, 298, "Organic Pump", metal, panel_bg, text_dark)
         canvas.create_line(680, 98, 734, 70, fill=power_color, width=2, dash=(4, 3))
-        canvas.create_line(214, 224, 244, 248, fill=exhaust_color, width=2, dash=(4, 3))
-        canvas.create_line(392, 226, 422, 252, fill=oil_color, width=2, dash=(4, 3))
-        canvas.scale("all", 0, 0, 1.2, 1.2)
-        canvas.move("all", 220, 72)
+        canvas.create_line(214, 224, 244, 248, fill=exhaust_hot, width=2, dash=(4, 3))
+        canvas.create_line(392, 226, 422, 252, fill=oil_hot, width=2, dash=(4, 3))
+        canvas.scale("all", 0, 0, 1.38, 1.38)
+        canvas.move("all", 256, 86)
+        self._update_process_stream_colors()
 
     def _draw_factory_icon(self, canvas: tk.Canvas, x: int, y: int, color: str) -> None:
         canvas.create_rectangle(x, y + 20, x + 60, y + 72, fill=color, outline=color)
@@ -730,63 +752,130 @@ class WHRSOrcApp(tk.Tk):
             nx = x + 6 + notch * 14
             canvas.create_rectangle(nx, y + 48, nx + 8, y + 56, fill=canvas["bg"], outline=canvas["bg"])
 
-    def _draw_exhaust_loop(self, canvas: tk.Canvas, color: str) -> None:
-        segments = [
-            (104, 146, 152, 146),
-            (152, 146, 152, 34),
-            (152, 34, 236, 34),
-            (236, 146, 236, 34),
-            (236, 146, 236, 232),
-            (236, 232, 104, 232),
-        ]
-        for x1, y1, x2, y2 in segments:
-            canvas.create_line(x1, y1, x2, y2, fill=color, width=4, arrow="last")
+    def _draw_stack_icon(self, canvas: tk.Canvas, x: int, y: int, color: str) -> None:
+        canvas.create_rectangle(x + 6, y + 8, x + 20, y + 44, fill="", outline=color, width=3)
+        canvas.create_line(x + 10, y + 4, x + 16, y, fill=color, width=2, smooth=True)
+        canvas.create_line(x + 18, y + 2, x + 24, y - 4, fill=color, width=2, smooth=True)
+        canvas.create_line(x + 6, y + 44, x + 20, y + 44, fill=color, width=3)
+
+    def _draw_exhaust_loop(self, canvas: tk.Canvas) -> None:
+        self._create_path_items(
+            canvas,
+            "exhaust_main",
+            [
+                (104, 146),
+                (152, 146),
+                (152, 34),
+                (236, 34),
+                (236, 146),
+                (236, 232),
+                (104, 232),
+            ],
+            width=6,
+            smooth=False,
+        )
         for y in [58, 148, 206]:
             canvas.create_rectangle(206, y, 234, y + 10, outline="#527ba8", width=2)
 
-    def _draw_oil_loop(self, canvas: tk.Canvas, color: str) -> None:
-        segments = [
-            (292, 72, 392, 72),
-            (392, 72, 392, 120),
-            (392, 120, 286, 120),
-            (272, 220, 272, 232),
-            (272, 232, 350, 232),
-            (350, 232, 350, 224),
-            (350, 224, 392, 224),
-            (392, 224, 392, 120),
-        ]
-        for x1, y1, x2, y2 in segments:
-            canvas.create_line(x1, y1, x2, y2, fill=color, width=4, smooth=True, arrow="last")
+    def _draw_oil_loop(self, canvas: tk.Canvas) -> None:
+        self._create_path_items(
+            canvas,
+            "oil_supply",
+            [
+                (292, 72),
+                (392, 72),
+                (392, 120),
+                (286, 120),
+            ],
+            width=6,
+            smooth=False,
+        )
+        self._create_path_items(
+            canvas,
+            "oil_return",
+            [
+                (272, 220),
+                (272, 232),
+                (350, 232),
+                (350, 224),
+                (392, 224),
+                (392, 120),
+            ],
+            width=6,
+            smooth=False,
+        )
 
-    def _draw_wf_loop(self, canvas: tk.Canvas, color: str) -> None:
-        segments = [
-            (452, 92, 492, 92),
-            (492, 92, 492, 72),
-            (492, 72, 540, 72),
-            (540, 138, 540, 206),
-            (540, 206, 620, 206),
-            (620, 250, 620, 275),
-            (620, 275, 490, 275),
-            (490, 275, 490, 312),
-            (490, 312, 428, 312),
-            (428, 312, 428, 120),
-            (428, 120, 350, 120),
-        ]
-        for x1, y1, x2, y2 in segments:
-            canvas.create_line(x1, y1, x2, y2, fill=color, width=4, smooth=True, arrow="last")
-        for x in [578, 602, 626]:
-            canvas.create_line(x, 250, x, 272, fill=color, width=3, arrow="last")
+    def _draw_wf_loop(self, canvas: tk.Canvas) -> None:
+        self._create_path_items(
+            canvas,
+            "wf_hot",
+            [
+                (452, 92),
+                (492, 92),
+                (492, 72),
+                (540, 72),
+            ],
+            width=6,
+            smooth=False,
+        )
+        self._create_path_items(
+            canvas,
+            "wf_reject",
+            [
+                (540, 138),
+                (540, 206),
+                (620, 206),
+                (620, 250),
+                (620, 275),
+                (490, 275),
+            ],
+            width=6,
+            smooth=False,
+        )
+        self._create_path_items(
+            canvas,
+            "wf_cold",
+            [
+                (490, 275),
+                (490, 312),
+                (428, 312),
+                (428, 120),
+                (350, 120),
+            ],
+            width=6,
+            smooth=False,
+        )
+        for index, x in enumerate([578, 602, 626]):
+            tag = f"wf_regen_branch_{index}"
+            self._create_path_items(canvas, tag, [(x, 250), (x, 272)], width=4, smooth=False)
 
     def _draw_power_path(self, canvas: tk.Canvas, color: str) -> None:
-        segments = [
-            (580, 108, 607, 108),
-            (698, 108, 760, 108),
-            (760, 108, 760, 48),
-            (698, 108, 698, 154),
-            (698, 154, 760, 154),
-        ]
-        for x1, y1, x2, y2 in segments:
-            canvas.create_line(x1, y1, x2, y2, fill=color, width=4, arrow="last")
+        self._create_path_items(
+            canvas,
+            "power_export",
+            [
+                (580, 108),
+                (607, 108),
+                (698, 108),
+                (760, 108),
+                (760, 48),
+            ],
+            width=5,
+            smooth=False,
+            fixed_color=color,
+        )
+        self._create_path_items(
+            canvas,
+            "power_auxiliary",
+            [
+                (698, 108),
+                (698, 154),
+                (760, 154),
+            ],
+            width=5,
+            smooth=False,
+            fixed_color=color,
+        )
         self._draw_grid_icon(canvas, 738, 20, color)
         self._draw_factory_icon(canvas, 726, 160, color)
         canvas.create_line(640, 55, 646, 45, fill=color, width=3)
@@ -800,6 +889,107 @@ class WHRSOrcApp(tk.Tk):
         canvas.create_line(x + 10, y + 30, x + 30, y + 30, fill=color, width=3)
         canvas.create_line(x + 6, y + 42, x + 34, y + 42, fill=color, width=3)
         canvas.create_line(x + 2, y + 58, x + 38, y + 58, fill=color, width=3)
+
+    def _create_path_items(
+        self,
+        canvas: tk.Canvas,
+        key: str,
+        points: list[tuple[int, int]],
+        *,
+        width: int,
+        smooth: bool,
+        fixed_color: str | None = None,
+    ) -> None:
+        item_ids: list[int] = []
+        if fixed_color is None:
+            default_color = "#8d99a6"
+        else:
+            default_color = fixed_color
+        for index, ((x1, y1), (x2, y2)) in enumerate(zip(points, points[1:])):
+            item_ids.append(
+                canvas.create_line(
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    fill=default_color,
+                    width=width,
+                    smooth=smooth,
+                    capstyle="round",
+                    joinstyle="round",
+                    arrow="last",
+                    arrowshape=(10, 12, 4),
+                )
+            )
+        self.diagram_stream_items[key] = item_ids
+
+    def _update_process_stream_colors(self) -> None:
+        if self.process_canvas is None or not self.diagram_stream_items:
+            return
+        exhaust_in = self._read_float_var(self.exhaust_inlet_temp_var, 500.0)
+        exhaust_out = self._effective_exhaust_outlet_temp_c()
+        oil_hot = self._effective_oil_hot_temp_c()
+        oil_delivery = self._effective_oil_delivery_temp_c()
+        oil_return = self._read_float_var(self.oil_inlet_temp_var, 175.0)
+        wf_in = self._read_float_var(self.wf_inlet_temp_var, 100.0)
+        wf_hot = self._effective_wf_hot_temp_c()
+        wf_condense = self._effective_wf_condense_temp_c(wf_in, wf_hot)
+
+        self._paint_stream_path("exhaust_main", "exhaust", exhaust_in, exhaust_out)
+        self._paint_stream_path("oil_supply", "oil", oil_hot, oil_delivery)
+        self._paint_stream_path("oil_return", "oil", max(oil_return + 10.0, oil_return), oil_return)
+        self._paint_stream_path("wf_hot", "working_fluid", max(wf_hot - 12.0, wf_in), wf_hot)
+        self._paint_stream_path("wf_reject", "working_fluid", wf_hot, wf_condense)
+        self._paint_stream_path("wf_cold", "working_fluid", wf_condense, wf_in)
+        for branch_key in [name for name in self.diagram_stream_items if name.startswith("wf_regen_branch_")]:
+            self._paint_stream_path(branch_key, "working_fluid", wf_condense, max(wf_condense - 10.0, wf_in))
+        self._paint_stream_path("power_export", "power", 1.0, 1.0)
+        self._paint_stream_path("power_auxiliary", "power", 1.0, 1.0)
+
+    def _paint_stream_path(self, key: str, fluid_key: str, start_temp_c: float, end_temp_c: float) -> None:
+        item_ids = self.diagram_stream_items.get(key)
+        if not item_ids or self.process_canvas is None:
+            return
+        colors = colors_for_temperature_span(fluid_key, start_temp_c, end_temp_c, steps=len(item_ids))
+        for item_id, color in zip(item_ids, colors):
+            self.process_canvas.itemconfigure(item_id, fill=color)
+
+    def _effective_exhaust_outlet_temp_c(self) -> float:
+        raw = self.exhaust_outlet_temp_var.get().strip()
+        if raw:
+            return float(raw)
+        return self._read_float_var(self.stack_min_temp_var, 150.0)
+
+    def _effective_oil_hot_temp_c(self) -> float:
+        raw = self.oil_outlet_temp_var.get().strip()
+        if raw:
+            return float(raw)
+        design_driver = self.boiler_driver_var.get()
+        if design_driver == BoilerDesignDriver.TARGET_OIL_OUTLET_TEMPERATURE.value and self.design_target_var.get().strip():
+            return float(self.design_target_var.get())
+        return max(self._read_float_var(self.loop_target_delivery_temp_var, 245.0) + 5.0, self._read_float_var(self.oil_inlet_temp_var, 175.0) + 20.0)
+
+    def _effective_oil_delivery_temp_c(self) -> float:
+        delivery = self._read_float_var(self.loop_target_delivery_temp_var, 245.0)
+        return min(delivery, self._effective_oil_hot_temp_c())
+
+    def _effective_wf_hot_temp_c(self) -> float:
+        target = self.orc_target_wf_outlet_var.get().strip()
+        if self.orc_heat_mode_var.get() == OrcScreeningHeatMode.SINGLE_PHASE_TEMPERATURE_GAIN.value and target:
+            return float(target)
+        return self._read_float_var(self.wf_max_outlet_var, 170.0)
+
+    def _effective_wf_condense_temp_c(self, wf_in: float, wf_hot: float) -> float:
+        return max(wf_in + 12.0, wf_hot - max((wf_hot - wf_in) * 0.45, 20.0))
+
+    def _read_float_var(self, variable: tk.StringVar, fallback: float) -> float:
+        raw = variable.get().strip()
+        if not raw:
+            return fallback
+        try:
+            return float(raw)
+        except ValueError:
+            return fallback
 
     def _register_rect_stage(
         self,
@@ -889,6 +1079,10 @@ class WHRSOrcApp(tk.Tk):
         canvas.create_polygon(x1, y1, x2, y1, x2 - 12, y2, x1 + 12, y2, fill=fill, outline=fill)
         for dx in [20, 42, 64, 86]:
             canvas.create_line(x1 + dx, y1 + 18, x1 + dx, y2 - 14, fill=panel_bg, width=2)
+        for cx in [x1 + 28, x1 + 56, x1 + 84]:
+            canvas.create_oval(cx - 8, y2 - 8, cx + 8, y2 + 8, outline=panel_bg, width=2)
+            canvas.create_line(cx - 5, y2, cx + 5, y2, fill=panel_bg, width=2)
+            canvas.create_line(cx, y2 - 5, cx, y2 + 5, fill=panel_bg, width=2)
         self._register_stage_texts(canvas, key, title, (x1 + x2) / 2, y1 - 18, (x1 + x2) / 2, y2 + 16, panel_bg, text_dark)
 
     def _register_pump_stage(
@@ -904,16 +1098,22 @@ class WHRSOrcApp(tk.Tk):
     ) -> None:
         canvas.create_oval(cx - 14, cy - 14, cx + 14, cy + 14, fill=panel_bg, outline=fill, width=3)
         canvas.create_line(cx - 10, cy + 8, cx + 10, cy - 8, fill=fill, width=3)
+        canvas.create_rectangle(cx - 18, cy + 14, cx + 18, cy + 20, fill=fill, outline=fill)
         self._register_stage_texts(canvas, key, title, cx, cy + 28, cx, cy + 48, panel_bg, text_dark)
 
     def _draw_boiler_core(self, canvas: tk.Canvas, x1: int, y1: int, x2: int, y2: int, exhaust_color: str, oil_color: str) -> None:
         center_x = (x1 + x2) / 2
         canvas.create_line(center_x - 10, y1 + 24, center_x + 8, y1 + 56, center_x - 10, y1 + 88, center_x + 8, y1 + 120, center_x - 10, y1 + 152, fill=exhaust_color, width=3)
         canvas.create_line(center_x + 10, y1 + 24, center_x - 8, y1 + 56, center_x + 10, y1 + 88, center_x - 8, y1 + 120, center_x + 10, y1 + 152, fill=oil_color, width=3)
+        for offset in [44, 76, 108, 140]:
+            canvas.create_line(x1 + 18, y1 + offset, x2 - 18, y1 + offset, fill="#dce7ef", width=1)
+        canvas.create_text(center_x, y1 + 168, text="multi-pass duty section", fill="#dce7ef", font=("Segoe UI", 6))
 
     def _draw_heat_exchanger_core(self, canvas: tk.Canvas, x1: int, y1: int, x2: int, y2: int, color: str) -> None:
         mid_y = (y1 + y2) / 2
         canvas.create_line(x1 + 16, mid_y, x1 + 34, mid_y - 14, x1 + 52, mid_y + 14, x1 + 70, mid_y - 14, x1 + 88, mid_y + 14, fill=color, width=3)
+        canvas.create_line(x1 + 18, y1 + 12, x2 - 18, y1 + 12, fill="#dce7ef", width=1)
+        canvas.create_line(x1 + 18, y2 - 12, x2 - 18, y2 - 12, fill="#dce7ef", width=1)
 
     def _register_stage_texts(
         self,

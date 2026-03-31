@@ -23,6 +23,7 @@ The current release focuses on trustworthy thermal balances, blocked-state handl
 - Saved-case load and save flow with `.whrs.json` files
 - Structured screening run logging to `data/logs/screening_runs.jsonl`
 - Markdown and JSON report export
+- Enlarged schematic process view with fluid-specific cold-to-hot color palettes
 
 ## Run the app
 

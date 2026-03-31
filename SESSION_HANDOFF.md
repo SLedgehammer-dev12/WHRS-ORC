@@ -73,11 +73,20 @@
 - Added UI interaction helpers:
   - `src/whrs_orc/ui/equipment_details.py`
   - `src/whrs_orc/ui/stream_motion.py`
+- Expanded the ORC heater backbone for multi-stage screening:
+  - `src/whrs_orc/equipment/contracts.py`
+  - `src/whrs_orc/equipment/orc_screening_heat_uptake.py`
+  - `src/whrs_orc/solvers/screening_case.py`
 - Added new UI color/palette tests:
   - `tests/test_stream_palette.py`
 - Added new UI interaction tests:
   - `tests/test_equipment_details.py`
   - `tests/test_stream_motion.py`
+- Expanded ORC, screening-case, persistence, and reporting tests for multi-stage heater cases:
+  - `tests/test_orc_screening.py`
+  - `tests/test_screening_case.py`
+  - `tests/test_saved_cases.py`
+  - `tests/test_screening_report.py`
 - Added release-readiness root files:
   - `README.md`
   - `CHANGELOG.md`
@@ -151,6 +160,11 @@
   - animated flow particles move along exhaust, oil, ORC, and power paths
   - clicking an equipment block updates a dedicated detail card with status, warnings, and key metrics
   - internal equipment artwork now remains clickable because stage interactions are tagged consistently
+- The ORC heater train is now more flexible:
+  - the schematic oil route between boiler and ORC heater has been corrected
+  - the ORC heater can be configured as 1 to 4 stages from the UI
+  - stage inputs now adapt to the selected ORC heat mode
+  - stage breakdown is preserved through solver, saved-case, and reporting layers
 - The project is now release-prepared at the local folder level:
   - README, changelog, package metadata, and ignore rules are present
 - The project is now published on GitHub:
@@ -168,6 +182,9 @@
   - richer hover/popover behavior beyond the current click-to-inspect detail card
   - selection highlighting on the active equipment block
   - diagram-level handling for remaining advanced inputs if needed
+- Extend the ORC heater train beyond the current screening scope:
+  - evaluate stage-specific pinch or UA targets
+  - decide whether stage inputs should also move directly onto the process schematic
 - Define backward-compatibility rules for future saved-case schema changes.
 - Decide whether export and solve logs should gain richer plant/site metadata.
 
@@ -185,4 +202,4 @@
 ## Tests run
 
 - `python -m unittest discover -s tests`
-- Status: `53 tests passed`
+- Status: `57 tests passed`

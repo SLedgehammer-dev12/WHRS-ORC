@@ -127,6 +127,13 @@ The project priority is calculation correctness first, then operator usability, 
   - palette legend ramps so users can distinguish fluids without color confusion
   - animated flow particles along the process paths
   - clickable equipment blocks that populate a dedicated equipment-detail card
+  - corrected thermal-oil routing between the boiler and ORC heater train on the schematic
+  - a user-selectable ORC heater stage count with dynamic stage inputs in the ORC tab
+- The ORC heater backbone now supports stage-based screening:
+  - stage duty fractions in oil-side screening mode
+  - per-stage working-fluid outlet targets in temperature-gain mode
+  - per-stage heat inputs in known-heat mode
+  - persistence and reporting now carry the heater-stage definitions
 - Diagram interaction helpers were extracted into pure helper layers:
   - `ui/equipment_details.py`
   - `ui/stream_motion.py`
@@ -186,6 +193,7 @@ Translate the current screening baseline into a more complete engineering produc
     - define backward-compatibility rules for future saved-case schema changes
     - decide whether export and solve logs should gain richer plant/site metadata
     - extend the new animated and clickable flowsheet with richer hover/popover behavior and selection highlighting
+    - decide whether stage-specific pinch or UA targets should be added on top of the current stage-duty / stage-temperature inputs
 
 ## Open decisions
 

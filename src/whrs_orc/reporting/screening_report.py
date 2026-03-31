@@ -71,11 +71,24 @@ def build_screening_markdown_report(
         f"- Oil outlet temperature [degC]: {case.oil_outlet_temp_c if case.oil_outlet_temp_c is not None else '-'}",
         f"- ORC working fluid: {case.wf_name}",
         f"- ORC heat mode: {case.orc_heat_mode.value}",
+        f"- ORC heater stage count: {case.orc_heater_stage_count}",
         f"- ORC power mode: {case.orc_power_mode.value}",
         "",
         "## KPI Summary",
         "",
     ]
+    if case.orc_heater_stages:
+        lines.extend(["- ORC heater stages:"])
+        for stage in case.orc_heater_stages:
+            stage_parts = [stage.stage_name]
+            if stage.duty_fraction is not None:
+                stage_parts.append(f"duty split {100.0 * stage.duty_fraction:.1f}%")
+            if stage.target_wf_outlet_temp_c is not None:
+                stage_parts.append(f"WF Tout {stage.target_wf_outlet_temp_c:.1f} degC")
+            if stage.heat_input_w is not None:
+                stage_parts.append(f"Q {stage.heat_input_w / 1000.0:.1f} kW")
+            lines.append(f"  - {', '.join(stage_parts)}")
+        lines.append("")
     for key, value in payload["kpis"].items():
         lines.append(f"- {key}: {value}")
     lines.extend(["", "## Operator Guidance", ""])
@@ -166,6 +179,16 @@ def _case_inputs_to_dict(case: ScreeningCaseInputs) -> dict[str, object]:
         "wf_pressure_pa": case.wf_pressure_pa,
         "wf_max_outlet_temp_c": case.wf_max_outlet_temp_c,
         "orc_heat_mode": case.orc_heat_mode.value,
+        "orc_heater_stage_count": case.orc_heater_stage_count,
+        "orc_heater_stages": [
+            {
+                "stage_name": stage.stage_name,
+                "duty_fraction": stage.duty_fraction,
+                "target_wf_outlet_temp_c": stage.target_wf_outlet_temp_c,
+                "heat_input_w": stage.heat_input_w,
+            }
+            for stage in case.orc_heater_stages
+        ],
         "orc_target_wf_outlet_temp_c": case.orc_target_wf_outlet_temp_c,
         "orc_known_heat_input_w": case.orc_known_heat_input_w,
         "min_orc_approach_k": case.min_orc_approach_k,

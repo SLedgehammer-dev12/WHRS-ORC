@@ -19,6 +19,7 @@ from whrs_orc.equipment.contracts import (
     BoilerDesignDriver,
     BoilerDesignTarget,
     BoilerMode,
+    OrcHeaterStageTarget,
     OrcScreeningHeatConstraints,
     OrcScreeningHeatMode,
     OrcScreeningHeatRequest,
@@ -40,6 +41,14 @@ def c_to_k(temp_c: float) -> float:
 
 def k_to_c(temp_k: float) -> float:
     return temp_k - 273.15
+
+
+@dataclass(slots=True)
+class OrcHeaterStageInput:
+    stage_name: str
+    duty_fraction: float | None = None
+    target_wf_outlet_temp_c: float | None = None
+    heat_input_w: float | None = None
 
 
 @dataclass(slots=True)
@@ -78,6 +87,8 @@ class ScreeningCaseInputs:
     wf_max_outlet_temp_c: float = 170.0
 
     orc_heat_mode: OrcScreeningHeatMode = OrcScreeningHeatMode.SCREENING_FROM_OIL_SIDE
+    orc_heater_stage_count: int = 1
+    orc_heater_stages: list[OrcHeaterStageInput] = field(default_factory=list)
     orc_target_wf_outlet_temp_c: float = 150.0
     orc_known_heat_input_w: float = 1_000_000.0
     min_orc_approach_k: float = 5.0
@@ -171,11 +182,16 @@ def run_screening_case(inputs: ScreeningCaseInputs) -> ScreeningCaseResult:
     )
     wf_stream = _build_working_fluid_stream(inputs)
 
-    orc_heat_parameters = {}
-    if inputs.orc_heat_mode is OrcScreeningHeatMode.SINGLE_PHASE_TEMPERATURE_GAIN:
-        orc_heat_parameters["target_wf_outlet_temp_k"] = c_to_k(inputs.orc_target_wf_outlet_temp_c)
-    if inputs.orc_heat_mode is OrcScreeningHeatMode.KNOWN_ORC_HEAT_INPUT:
-        orc_heat_parameters["q_orc_absorbed_target_w"] = inputs.orc_known_heat_input_w
+    heater_stage_inputs = _resolve_orc_heater_stages(inputs)
+    heater_stage_targets = [
+        OrcHeaterStageTarget(
+            stage_name=stage.stage_name,
+            duty_fraction=stage.duty_fraction,
+            target_wf_outlet_temp_k=c_to_k(stage.target_wf_outlet_temp_c) if stage.target_wf_outlet_temp_c is not None else None,
+            heat_input_w=stage.heat_input_w,
+        )
+        for stage in heater_stage_inputs
+    ]
 
     orc_heat_result = solve_orc_screening_heat_uptake(
         OrcScreeningHeatRequest(
@@ -183,11 +199,12 @@ def run_screening_case(inputs: ScreeningCaseInputs) -> ScreeningCaseResult:
             mode=inputs.orc_heat_mode,
             oil_hot_stream=oil_hot_stream,
             wf_cold_stream=wf_stream,
+            heater_stages=heater_stage_targets,
             constraints=OrcScreeningHeatConstraints(
                 min_approach_delta_t_k=inputs.min_orc_approach_k,
                 max_wf_outlet_temp_k=c_to_k(inputs.wf_max_outlet_temp_c),
             ),
-            parameters=orc_heat_parameters,
+            case_context={"heater_stage_count": len(heater_stage_targets)},
         )
     )
     if orc_heat_result.blocked_state.blocked:
@@ -279,3 +296,66 @@ def _build_working_fluid_stream(inputs: ScreeningCaseInputs) -> ProcessStream:
         mass_flow_kg_s=max(inputs.oil_mass_flow_kg_s * 0.5, 1.0),
         inlet=StatePoint(tag="wf_in", temp_k=c_to_k(inputs.wf_inlet_temp_c), pressure_pa=inputs.wf_pressure_pa),
     )
+
+
+def _resolve_orc_heater_stages(inputs: ScreeningCaseInputs) -> list[OrcHeaterStageInput]:
+    stage_count = max(1, int(inputs.orc_heater_stage_count or 1))
+    defaults = _default_orc_heater_stage_inputs(inputs, stage_count)
+    if not inputs.orc_heater_stages:
+        return defaults
+
+    resolved: list[OrcHeaterStageInput] = []
+    for index in range(stage_count):
+        if index < len(inputs.orc_heater_stages):
+            stage = inputs.orc_heater_stages[index]
+            default_stage = defaults[index]
+            resolved.append(
+                OrcHeaterStageInput(
+                    stage_name=stage.stage_name.strip() or default_stage.stage_name,
+                    duty_fraction=stage.duty_fraction if stage.duty_fraction is not None else default_stage.duty_fraction,
+                    target_wf_outlet_temp_c=(
+                        stage.target_wf_outlet_temp_c
+                        if stage.target_wf_outlet_temp_c is not None
+                        else default_stage.target_wf_outlet_temp_c
+                    ),
+                    heat_input_w=stage.heat_input_w if stage.heat_input_w is not None else default_stage.heat_input_w,
+                )
+            )
+        else:
+            resolved.append(defaults[index])
+    return resolved
+
+
+def _default_orc_heater_stage_inputs(inputs: ScreeningCaseInputs, stage_count: int) -> list[OrcHeaterStageInput]:
+    names = _default_orc_heater_stage_names(stage_count)
+    if inputs.orc_heat_mode is OrcScreeningHeatMode.SCREENING_FROM_OIL_SIDE:
+        share = 1.0 / stage_count
+        return [OrcHeaterStageInput(stage_name=name, duty_fraction=share) for name in names]
+
+    if inputs.orc_heat_mode is OrcScreeningHeatMode.SINGLE_PHASE_TEMPERATURE_GAIN:
+        final_temp_c = max(inputs.orc_target_wf_outlet_temp_c, inputs.wf_inlet_temp_c + 1.0)
+        delta_c = final_temp_c - inputs.wf_inlet_temp_c
+        return [
+            OrcHeaterStageInput(
+                stage_name=name,
+                target_wf_outlet_temp_c=inputs.wf_inlet_temp_c + delta_c * ((index + 1) / stage_count),
+            )
+            for index, name in enumerate(names)
+        ]
+
+    share_w = inputs.orc_known_heat_input_w / stage_count
+    return [OrcHeaterStageInput(stage_name=name, heat_input_w=share_w) for name in names]
+
+
+def _default_orc_heater_stage_names(stage_count: int) -> list[str]:
+    defaults = ["ORC Heater"]
+    if stage_count == 2:
+        defaults = ["Preheater", "Vaporizer"]
+    elif stage_count == 3:
+        defaults = ["Preheater", "Vaporizer", "Superheater"]
+    elif stage_count >= 4:
+        defaults = ["Preheater", "Vaporizer", "Superheater"]
+        defaults.extend(f"Stage {index}" for index in range(4, stage_count + 1))
+    if stage_count == 1:
+        return defaults
+    return defaults[:stage_count]

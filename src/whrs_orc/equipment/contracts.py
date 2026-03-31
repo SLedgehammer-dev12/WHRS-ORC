@@ -109,11 +109,20 @@ class OrcScreeningHeatConstraints:
 
 
 @dataclass(slots=True)
+class OrcHeaterStageTarget:
+    stage_name: str
+    duty_fraction: float | None = None
+    target_wf_outlet_temp_k: float | None = None
+    heat_input_w: float | None = None
+
+
+@dataclass(slots=True)
 class OrcScreeningHeatRequest:
     equipment_id: str
     mode: OrcScreeningHeatMode
     oil_hot_stream: ProcessStream
     wf_cold_stream: ProcessStream
+    heater_stages: list[OrcHeaterStageTarget] = field(default_factory=list)
     constraints: OrcScreeningHeatConstraints = field(default_factory=OrcScreeningHeatConstraints)
     parameters: dict[str, Any] = field(default_factory=dict)
     case_context: dict[str, Any] = field(default_factory=dict)

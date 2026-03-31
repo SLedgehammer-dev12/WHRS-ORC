@@ -6,6 +6,9 @@
 - Added clickable equipment detail inspection on the schematic.
 - Added pure helper modules for stream motion and equipment-detail rendering.
 - Expanded test coverage for stream-motion math and equipment-detail summaries.
+- Added a multi-stage ORC heater train model with mode-dependent stage inputs.
+- Corrected the thermal-oil routing between boiler and ORC heater in the UI schematic.
+- Added persistence and report payload support for stage-based ORC heater definitions.
 
 ## 0.2.0 - 2026-03-30
 

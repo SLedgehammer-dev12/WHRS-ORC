@@ -15,7 +15,7 @@ from whrs_orc.reporting.screening_report import (
 )
 from whrs_orc.equipment.contracts import BoilerDesignDriver, BoilerMode, OrcScreeningHeatMode, OrcScreeningPowerMode, ThermalOilLoopMode
 from whrs_orc.properties.thermal_oil_properties import ThermalOilPropertyProvider
-from whrs_orc.solvers.screening_case import ScreeningCaseInputs, ScreeningCaseResult, c_to_k, run_screening_case
+from whrs_orc.solvers.screening_case import OrcHeaterStageInput, ScreeningCaseInputs, ScreeningCaseResult, c_to_k, run_screening_case
 from whrs_orc.ui.benchmark_cases import benchmark_display_map, design_target_display_value
 from whrs_orc.ui.diagram_units import (
     PROCESS_INPUT_SPECS,
@@ -39,6 +39,7 @@ from whrs_orc.ui.view_model import build_ui_behavior_state
 APP_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CASES_DIR = APP_ROOT / "data" / "cases"
 DEFAULT_LOG_PATH = APP_ROOT / "data" / "logs" / "screening_runs.jsonl"
+MAX_ORC_HEATER_STAGES = 4
 
 
 class WHRSOrcApp(tk.Tk):
@@ -125,6 +126,7 @@ class WHRSOrcApp(tk.Tk):
         self.wf_max_outlet_var = tk.StringVar(value="170")
 
         self.orc_heat_mode_var = tk.StringVar(value=OrcScreeningHeatMode.SCREENING_FROM_OIL_SIDE.value)
+        self.orc_heater_stage_count_var = tk.StringVar(value="1")
         self.orc_target_wf_outlet_var = tk.StringVar(value="150")
         self.orc_known_heat_input_var = tk.StringVar(value="1000000")
         self.orc_min_approach_var = tk.StringVar(value="5")
@@ -132,6 +134,19 @@ class WHRSOrcApp(tk.Tk):
         self.orc_power_mode_var = tk.StringVar(value=OrcScreeningPowerMode.GROSS_POWER_FROM_EFFICIENCY.value)
         self.eta_orc_gross_var = tk.StringVar(value="0.18")
         self.gross_power_target_var = tk.StringVar(value="400000")
+        self.orc_stage_rows_frame: ttk.Frame | None = None
+        self.orc_stage_helper_var = tk.StringVar(value="")
+        self._last_orc_stage_layout = (self.orc_heat_mode_var.get(), self.orc_heater_stage_count_var.get())
+        self.orc_stage_fields: list[dict[str, object]] = []
+        for _index in range(MAX_ORC_HEATER_STAGES):
+            self.orc_stage_fields.append(
+                {
+                    "name_var": tk.StringVar(value=""),
+                    "value_var": tk.StringVar(value=""),
+                    "unit_var": tk.StringVar(value="degC"),
+                    "target_label_var": tk.StringVar(value="WF Tout target"),
+                }
+            )
 
         self.design_target_var = tk.StringVar(value="0.50")
         self._last_design_target_driver = self.boiler_driver_var.get()
@@ -156,6 +171,7 @@ class WHRSOrcApp(tk.Tk):
         self.oil_property_entries: list[ttk.Entry] = []
         self.wf_property_entries: list[ttk.Entry] = []
         self.diagram_stage_items: dict[str, dict[str, int]] = {}
+        self.diagram_orc_stage_items: list[dict[str, int]] = []
         self.diagram_stream_items: dict[str, list[int]] = {}
         self.diagram_stream_particles: dict[str, int] = {}
         self.diagram_stream_progress: dict[str, float] = {}
@@ -314,15 +330,181 @@ class WHRSOrcApp(tk.Tk):
         self.wf_property_entries.append(self._entry_row(parent, "Akiskan max cikis sicakligi [degC]", self.wf_max_outlet_var, 4))
         ttk.Separator(parent).grid(row=5, column=0, columnspan=2, sticky="ew", pady=10)
         self._combo_row(parent, "ORC isi alma modu", self.orc_heat_mode_var, [m.value for m in OrcScreeningHeatMode], 6)
-        self.orc_target_wf_entry = self._entry_row(parent, "Hedef akiskan cikis sicakligi [degC]", self.orc_target_wf_outlet_var, 7)
-        self.orc_known_heat_entry = self._entry_row(parent, "Bilinen ORC isi girdisi [W]", self.orc_known_heat_input_var, 8)
-        self._entry_row(parent, "Minimum yaklasim [K]", self.orc_min_approach_var, 9)
-        ttk.Separator(parent).grid(row=10, column=0, columnspan=2, sticky="ew", pady=10)
-        self._combo_row(parent, "ORC guc modu", self.orc_power_mode_var, [m.value for m in OrcScreeningPowerMode], 11)
-        self.orc_efficiency_entry = self._entry_row(parent, "Hedef ORC brut verim", self.eta_orc_gross_var, 12)
-        self.gross_power_target_entry = self._entry_row(parent, "Hedef brut elektrik gucu [W]", self.gross_power_target_var, 13)
+        self._combo_row(parent, "Heater kademe sayisi", self.orc_heater_stage_count_var, [str(index) for index in range(1, MAX_ORC_HEATER_STAGES + 1)], 7)
+        self.orc_target_wf_entry = self._entry_row(parent, "Tek kademe WF cikis hedefi [degC]", self.orc_target_wf_outlet_var, 8)
+        self.orc_known_heat_entry = self._entry_row(parent, "Tek kademe ORC isi girdisi [W]", self.orc_known_heat_input_var, 9)
+        self._entry_row(parent, "Minimum yaklasim [K]", self.orc_min_approach_var, 10)
+        self._build_orc_stage_editor(parent, start_row=11)
+        ttk.Separator(parent).grid(row=18, column=0, columnspan=2, sticky="ew", pady=10)
+        self._combo_row(parent, "ORC guc modu", self.orc_power_mode_var, [m.value for m in OrcScreeningPowerMode], 19)
+        self.orc_efficiency_entry = self._entry_row(parent, "Hedef ORC brut verim", self.eta_orc_gross_var, 20)
+        self.gross_power_target_entry = self._entry_row(parent, "Hedef brut elektrik gucu [W]", self.gross_power_target_var, 21)
 
         self.wf_name_var.trace_add("write", lambda *_: self._apply_wf_preset())
+
+    def _build_orc_stage_editor(self, parent: ttk.Frame, *, start_row: int) -> None:
+        ttk.Label(parent, text="ORC heater train", style="PanelTitle.TLabel").grid(
+            row=start_row,
+            column=0,
+            columnspan=2,
+            sticky="w",
+            pady=(8, 4),
+        )
+        helper = ttk.Label(parent, textvariable=self.orc_stage_helper_var, style="Soft.TLabel", wraplength=360, justify="left")
+        helper.grid(row=start_row + 1, column=0, columnspan=2, sticky="w", pady=(0, 6))
+        container = ttk.Frame(parent, style="Panel.TFrame")
+        container.grid(row=start_row + 2, column=0, columnspan=2, sticky="ew")
+        container.grid_columnconfigure(1, weight=1)
+        self.orc_stage_rows_frame = container
+
+        for index, stage_field in enumerate(self.orc_stage_fields):
+            row = ttk.Frame(container, style="Panel.TFrame")
+            row.grid(row=index, column=0, sticky="ew", pady=3)
+            ttk.Label(row, text=f"Kademe {index + 1}", width=10).pack(side="left")
+            ttk.Entry(row, textvariable=stage_field["name_var"], width=16).pack(side="left", padx=(0, 8))
+            ttk.Label(row, textvariable=stage_field["target_label_var"], width=17).pack(side="left")
+            entry = ttk.Entry(row, textvariable=stage_field["value_var"], width=12)
+            entry.pack(side="left", padx=(0, 6))
+            combo = ttk.Combobox(row, textvariable=stage_field["unit_var"], state="readonly", width=7, style="Accent.TCombobox")
+            combo.pack(side="left")
+            stage_field["row"] = row
+            stage_field["entry"] = entry
+            stage_field["combo"] = combo
+
+    def _active_orc_stage_count(self) -> int:
+        try:
+            return max(1, min(MAX_ORC_HEATER_STAGES, int(self.orc_heater_stage_count_var.get())))
+        except ValueError:
+            return 1
+
+    def _default_orc_stage_names(self, stage_count: int) -> list[str]:
+        if stage_count == 1:
+            return ["ORC Heater"]
+        if stage_count == 2:
+            return ["Preheater", "Vaporizer"]
+        if stage_count == 3:
+            return ["Preheater", "Vaporizer", "Superheater"]
+        names = ["Preheater", "Vaporizer", "Superheater"]
+        names.extend(f"Stage {index}" for index in range(4, stage_count + 1))
+        return names
+
+    def _orc_stage_presentation(self) -> tuple[str, str, tuple[str, ...], str]:
+        mode = OrcScreeningHeatMode(self.orc_heat_mode_var.get())
+        if mode is OrcScreeningHeatMode.SCREENING_FROM_OIL_SIDE:
+            return (
+                "Duty split",
+                "Her kademenin toplam ORC heater duty icindeki payini girin. Toplam 100% olmali.",
+                ("%", "frac"),
+                "%",
+            )
+        if mode is OrcScreeningHeatMode.SINGLE_PHASE_TEMPERATURE_GAIN:
+            return (
+                "WF Tout",
+                "Her kademenin cikis sicakligi bir sonraki kademenin giris sicakligi olarak kullanilir.",
+                ("degC", "K", "degF"),
+                "degC",
+            )
+        return (
+            "Q stage",
+            "Bilinen toplam ORC isisini kademelere paylastirabilirsiniz.",
+            ("kW", "W", "MW"),
+            "kW",
+        )
+
+    def _reset_orc_stage_defaults(self) -> None:
+        stage_count = self._active_orc_stage_count()
+        target_label, helper_text, units, default_unit = self._orc_stage_presentation()
+        names = self._default_orc_stage_names(stage_count)
+        wf_inlet = self._read_float_var(self.wf_inlet_temp_var, 100.0)
+        wf_final = max(self._read_float_var(self.orc_target_wf_outlet_var, 150.0), wf_inlet + 1.0)
+        known_heat_w = self._read_float_var(self.orc_known_heat_input_var, 1_000_000.0)
+
+        self.orc_stage_helper_var.set(helper_text)
+        for index, stage_field in enumerate(self.orc_stage_fields):
+            stage_field["target_label_var"].set(target_label)
+            stage_field["unit_var"].set(default_unit)
+            row_name = names[index] if index < stage_count else f"Stage {index + 1}"
+            stage_field["name_var"].set(row_name)
+            if index >= stage_count:
+                stage_field["value_var"].set("")
+                continue
+            if OrcScreeningHeatMode(self.orc_heat_mode_var.get()) is OrcScreeningHeatMode.SCREENING_FROM_OIL_SIDE:
+                stage_field["value_var"].set(self._format_base_value(100.0 / stage_count))
+            elif OrcScreeningHeatMode(self.orc_heat_mode_var.get()) is OrcScreeningHeatMode.SINGLE_PHASE_TEMPERATURE_GAIN:
+                target_temp = wf_inlet + (wf_final - wf_inlet) * ((index + 1) / stage_count)
+                stage_field["value_var"].set(self._format_base_value(target_temp))
+            else:
+                stage_field["value_var"].set(self._format_base_value((known_heat_w / stage_count) / 1000.0))
+
+    def _refresh_orc_stage_editor(self) -> None:
+        stage_count = self._active_orc_stage_count()
+        target_label, helper_text, units, default_unit = self._orc_stage_presentation()
+        if stage_count == 1:
+            self.orc_stage_helper_var.set("Tek kademe secili. Bu modda mevcut tek-kademe ORC hedef alanlari kullanilir.")
+        else:
+            self.orc_stage_helper_var.set(helper_text)
+        mode = OrcScreeningHeatMode(self.orc_heat_mode_var.get())
+        single_stage_mode_fields_enabled = stage_count == 1
+
+        for index, stage_field in enumerate(self.orc_stage_fields):
+            row = stage_field["row"]
+            combo = stage_field["combo"]
+            entry = stage_field["entry"]
+            stage_field["target_label_var"].set(target_label)
+            combo.configure(values=units)
+            if stage_field["unit_var"].get() not in units:
+                stage_field["unit_var"].set(default_unit)
+            if stage_count == 1:
+                row.grid_remove()
+            elif index < stage_count:
+                row.grid()
+                entry.configure(state="normal")
+                combo.configure(state="readonly")
+            else:
+                row.grid_remove()
+
+        self._set_entry_state(
+            self.orc_target_wf_entry,
+            single_stage_mode_fields_enabled and mode is OrcScreeningHeatMode.SINGLE_PHASE_TEMPERATURE_GAIN,
+        )
+        self._set_entry_state(
+            self.orc_known_heat_entry,
+            single_stage_mode_fields_enabled and mode is OrcScreeningHeatMode.KNOWN_ORC_HEAT_INPUT,
+        )
+
+    def _build_orc_stage_inputs_from_ui(self) -> list[OrcHeaterStageInput]:
+        stage_count = self._active_orc_stage_count()
+        mode = OrcScreeningHeatMode(self.orc_heat_mode_var.get())
+        if stage_count == 1:
+            stage_name = self.orc_stage_fields[0]["name_var"].get().strip() or "ORC Heater"
+            if mode is OrcScreeningHeatMode.SCREENING_FROM_OIL_SIDE:
+                return [OrcHeaterStageInput(stage_name=stage_name, duty_fraction=1.0)]
+            if mode is OrcScreeningHeatMode.SINGLE_PHASE_TEMPERATURE_GAIN:
+                return [
+                    OrcHeaterStageInput(
+                        stage_name=stage_name,
+                        target_wf_outlet_temp_c=float(self.orc_target_wf_outlet_var.get()),
+                    )
+                ]
+            return [OrcHeaterStageInput(stage_name=stage_name, heat_input_w=float(self.orc_known_heat_input_var.get()))]
+        stages: list[OrcHeaterStageInput] = []
+        for index in range(stage_count):
+            stage_field = self.orc_stage_fields[index]
+            stage_name = stage_field["name_var"].get().strip() or f"Stage {index + 1}"
+            raw_value = stage_field["value_var"].get().strip()
+            if not raw_value:
+                raise ValueError(f"ORC heater stage `{stage_name}` target is required.")
+            unit = stage_field["unit_var"].get()
+            if mode is OrcScreeningHeatMode.SCREENING_FROM_OIL_SIDE:
+                duty_fraction = convert_to_base("ratio", float(raw_value), unit)
+                stages.append(OrcHeaterStageInput(stage_name=stage_name, duty_fraction=duty_fraction))
+            elif mode is OrcScreeningHeatMode.SINGLE_PHASE_TEMPERATURE_GAIN:
+                target_temp_c = convert_to_base("temperature", float(raw_value), unit)
+                stages.append(OrcHeaterStageInput(stage_name=stage_name, target_wf_outlet_temp_c=target_temp_c))
+            else:
+                heat_input_w = convert_to_base("power", float(raw_value), unit)
+                stages.append(OrcHeaterStageInput(stage_name=stage_name, heat_input_w=heat_input_w))
+        return stages
 
     def _build_output_panel(self, parent: ttk.Frame) -> None:
         header = ttk.Frame(parent, style="Panel.TFrame")
@@ -564,6 +746,40 @@ class WHRSOrcApp(tk.Tk):
         self.diagram_composition_total_label.pack(anchor="w", pady=(4, 0))
         self.process_canvas.create_window(20, 446, anchor="nw", window=frame)
 
+    def _clear_process_canvas_overlays(self) -> None:
+        frames: dict[int, tk.Misc] = {}
+        for field in self.diagram_input_fields.values():
+            frame = field.get("frame")
+            if frame is not None:
+                frames[id(frame)] = frame
+        for field in self.diagram_composition_fields.values():
+            frame = field.get("frame")
+            if frame is not None:
+                frames[id(frame)] = frame
+        if self.diagram_design_target_field is not None:
+            frame = self.diagram_design_target_field.get("frame")
+            if frame is not None:
+                frames[id(frame)] = frame
+        for frame in frames.values():
+            frame.destroy()
+        self.diagram_input_fields = {}
+        self.diagram_design_target_field = None
+        self.diagram_composition_fields = {}
+        self.diagram_composition_total_label = None
+
+    def _rebuild_process_canvas(self) -> None:
+        if self.process_canvas is None:
+            return
+        self._clear_process_canvas_overlays()
+        self._draw_process_scene()
+        self._build_process_input_boxes()
+        self._build_design_target_box()
+        self._build_exhaust_composition_box()
+        self._sync_all_state_to_diagram_fields()
+        snapshot = build_process_snapshot(self.last_result)
+        self._apply_process_snapshot(snapshot)
+        self._refresh_selected_equipment_detail()
+
     def _bind_base_state_sync(self) -> None:
         for key, variable in self._base_state_vars.items():
             variable.trace_add("write", lambda *_args, sync_key=key: self._sync_single_state_to_diagram_field(sync_key))
@@ -715,6 +931,7 @@ class WHRSOrcApp(tk.Tk):
         canvas.delete("all")
         canvas.configure(width=1720)
         self.diagram_stage_items = {}
+        self.diagram_orc_stage_items = []
         self.diagram_stream_items = {}
         self.diagram_stream_particles = {}
         self.diagram_stream_progress = {}
@@ -727,45 +944,59 @@ class WHRSOrcApp(tk.Tk):
         metal = "#123f7a"
         text_dark = "#17322b"
         panel_bg = "#fbf7ef"
+        orc_stage_layout = self._orc_stage_layout_base()
+        stage_chain_left = orc_stage_layout[0][0]
+        stage_chain_right = orc_stage_layout[-1][2]
+        turbine_x1 = 742
+        turbine_x2 = 824
+        generator_x1 = 856
+        generator_x2 = 952
+        regenerator_x1 = 760
+        regenerator_x2 = 916
+        condenser_x1 = 788
+        condenser_x2 = 904
+        organic_pump_cx = 678
 
         canvas.create_text(72, 318, text="FACTORY", fill=metal, font=("Georgia", 21, "bold"))
         canvas.create_text(252, 332, text="EXHAUST GAS CIRCUIT", fill=exhaust_hot, font=("Segoe UI Semibold", 10))
         canvas.create_text(438, 22, text="THERMAL OIL CIRCUIT", fill=oil_hot, font=("Segoe UI Semibold", 10))
-        canvas.create_text(604, 20, text="ORGANIC FLUID CIRCUIT", fill=wf_hot, font=("Segoe UI Semibold", 10))
-        canvas.create_text(812, 40, text="GRID", fill=metal, font=("Segoe UI Semibold", 9))
-        canvas.create_text(804, 138, text="SELF\nUSE", fill=metal, font=("Segoe UI Semibold", 8), justify="center")
+        canvas.create_text((stage_chain_left + stage_chain_right) / 2, 20, text="ORC HEATER TRAIN", fill=wf_hot, font=("Segoe UI Semibold", 10))
+        canvas.create_text(1100, 40, text="GRID", fill=metal, font=("Segoe UI Semibold", 9))
+        canvas.create_text(1092, 138, text="SELF\nUSE", fill=metal, font=("Segoe UI Semibold", 8), justify="center")
         canvas.create_text(246, 26, text="STACK", fill="#6f7d75", font=("Segoe UI", 8))
-        canvas.create_text(392, 58, text="Oil supply header", fill="#6f7d75", font=("Segoe UI", 8))
-        canvas.create_text(618, 286, text="Heat rejection + condensate return", fill="#6f7d75", font=("Segoe UI", 8))
-        canvas.create_text(646, 174, text="Electric power export", fill="#6f7d75", font=("Segoe UI", 8))
-        canvas.create_text(300, 260, text="Duty transfer zone", fill="#6f7d75", font=("Segoe UI", 8))
+        canvas.create_text((stage_chain_left + stage_chain_right) / 2, 52, text="Oil enters the hottest stage first and returns to the oil pump from the cold end", fill="#6f7d75", font=("Segoe UI", 8))
+        canvas.create_text(852, 286, text="Heat rejection + condensate return", fill="#6f7d75", font=("Segoe UI", 8))
+        canvas.create_text(934, 174, text="Electric power export", fill="#6f7d75", font=("Segoe UI", 8))
+        canvas.create_text((stage_chain_left + stage_chain_right) / 2, 182, text="Working fluid flows through the heater train from cold to hot", fill="#6f7d75", font=("Segoe UI", 8))
 
         self._draw_factory_icon(canvas, 42, 110, metal, stage_tag="stage_factory")
         self._register_stage_texts(canvas, "factory", "Factory", 72, 96, 72, 210, panel_bg, text_dark, stage_tag="stage_factory")
         self._draw_stack_icon(canvas, 332, 6, metal)
         self._draw_exhaust_loop(canvas)
-        self._draw_oil_loop(canvas)
-        self._draw_wf_loop(canvas)
-        self._draw_power_path(canvas, power_color)
+        self._draw_oil_loop(canvas, orc_stage_layout)
+        self._draw_wf_loop(canvas, orc_stage_layout, turbine_x1, turbine_x2, regenerator_x1, regenerator_x2, condenser_x1, condenser_x2, organic_pump_cx)
+        self._draw_power_path(canvas, power_color, generator_x1, generator_x2)
 
         self._register_round_rect_stage("boiler", canvas, 220, 58, 292, 220, "Boiler", metal, panel_bg, text_dark)
         self._draw_boiler_core(canvas, 220, 58, 292, 220, exhaust_hot, oil_hot, stage_tag="stage_boiler")
-        self._register_capsule_stage("heat_exchanger", canvas, 350, 70, 452, 120, "Heat Exchanger", metal, panel_bg, text_dark)
-        self._draw_heat_exchanger_core(canvas, 350, 70, 452, 120, wf_hot, stage_tag="stage_heat_exchanger")
-        self._register_turbine_stage(canvas, 492, 76, 580, 138, "turbine", "Turbine", metal, panel_bg, text_dark)
-        self._register_rect_stage("generator", canvas, 607, 83, 698, 131, "Generator", metal, panel_bg, text_dark)
-        self._register_capsule_stage("regenerator", canvas, 550, 206, 690, 250, "Regenerator", metal, panel_bg, text_dark)
-        self._draw_heat_exchanger_core(canvas, 550, 206, 690, 250, wf_hot, stage_tag="stage_regenerator")
-        self._register_condenser_stage(canvas, 575, 275, 685, 340, "condenser", "Air Condenser", metal, panel_bg, text_dark)
+        for index, (x1, y1, x2, y2) in enumerate(orc_stage_layout):
+            stage_name = self.orc_stage_fields[index]["name_var"].get().strip() or f"Stage {index + 1}"
+            self._register_orc_heater_stage(canvas, index, x1, y1, x2, y2, stage_name, metal, panel_bg, text_dark, wf_hot)
+        self._register_turbine_stage(canvas, turbine_x1, 76, turbine_x2, 138, "turbine", "Turbine", metal, panel_bg, text_dark)
+        self._register_rect_stage("generator", canvas, generator_x1, 83, generator_x2, 131, "Generator", metal, panel_bg, text_dark)
+        self._register_capsule_stage("regenerator", canvas, regenerator_x1, 206, regenerator_x2, 250, "Regenerator", metal, panel_bg, text_dark)
+        self._draw_heat_exchanger_core(canvas, regenerator_x1, 206, regenerator_x2, 250, wf_hot, stage_tag="stage_regenerator")
+        self._register_condenser_stage(canvas, condenser_x1, 275, condenser_x2, 340, "condenser", "Air Condenser", metal, panel_bg, text_dark)
         self._register_pump_stage("oil_pump", canvas, 335, 226, "Oil Pump", metal, panel_bg, text_dark)
-        self._register_pump_stage("organic_pump", canvas, 458, 298, "Organic Pump", metal, panel_bg, text_dark)
-        canvas.create_line(680, 98, 734, 70, fill=power_color, width=2, dash=(4, 3))
+        self._register_pump_stage("organic_pump", canvas, organic_pump_cx, 298, "Organic Pump", metal, panel_bg, text_dark)
+        canvas.create_line(generator_x2, 98, generator_x2 + 58, 70, fill=power_color, width=2, dash=(4, 3))
         canvas.create_line(214, 224, 244, 248, fill=exhaust_hot, width=2, dash=(4, 3))
-        canvas.create_line(392, 226, 422, 252, fill=oil_hot, width=2, dash=(4, 3))
+        canvas.create_line(362, 226, 392, 252, fill=oil_hot, width=2, dash=(4, 3))
         canvas.scale("all", 0, 0, 1.38, 1.38)
         canvas.move("all", 256, 86)
         self._update_process_stream_colors()
         self._bind_stage_interactions()
+        self._apply_orc_stage_display()
         self._restart_stream_animation()
 
     def _draw_factory_icon(self, canvas: tk.Canvas, x: int, y: int, color: str, *, stage_tag: str | None = None) -> None:
@@ -804,43 +1035,154 @@ class WHRSOrcApp(tk.Tk):
         for y in [58, 148, 206]:
             canvas.create_rectangle(206, y, 234, y + 10, outline="#527ba8", width=2)
 
-    def _draw_oil_loop(self, canvas: tk.Canvas) -> None:
+    def _orc_stage_layout_base(self) -> list[tuple[int, int, int, int]]:
+        stage_count = self._active_orc_stage_count()
+        stage_width = 70
+        stage_height = 54
+        gap = 18
+        max_chain_width = MAX_ORC_HEATER_STAGES * stage_width + (MAX_ORC_HEATER_STAGES - 1) * gap
+        chain_width = stage_count * stage_width + (stage_count - 1) * gap
+        start_x = int(360 + (max_chain_width - chain_width) / 2)
+        y1 = 72
+        y2 = y1 + stage_height
+        return [
+            (start_x + index * (stage_width + gap), y1, start_x + index * (stage_width + gap) + stage_width, y2)
+            for index in range(stage_count)
+        ]
+
+    def _register_orc_heater_stage(
+        self,
+        canvas: tk.Canvas,
+        index: int,
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
+        title: str,
+        fill: str,
+        panel_bg: str,
+        text_dark: str,
+        wf_color: str,
+    ) -> None:
+        tag = "stage_heat_exchanger"
+        canvas.create_rectangle(x1 + 18, y1, x2 - 18, y2, fill=fill, outline=fill, tags=(tag,))
+        canvas.create_oval(x1, y1, x1 + 36, y2, fill=fill, outline=fill, tags=(tag,))
+        canvas.create_oval(x2 - 36, y1, x2, y2, fill=fill, outline=fill, tags=(tag,))
+        self._draw_heat_exchanger_core(canvas, x1, y1, x2, y2, wf_color, stage_tag=tag)
+        title_id = canvas.create_text((x1 + x2) / 2, y1 - 18, text=title.upper(), fill=text_dark, font=("Segoe UI Semibold", 7), tags=(tag,))
+        primary_id = canvas.create_text((x1 + x2) / 2, y2 + 16, text="Awaiting solve", fill=text_dark, font=("Segoe UI Semibold", 7), tags=(tag,))
+        secondary_id = canvas.create_text((x1 + x2) / 2, y2 + 30, text="", fill="#5f6f65", font=("Segoe UI", 7), tags=(tag,))
+        status_id = canvas.create_oval(x2 - 12, y1 + 6, x2 - 2, y1 + 16, fill=status_color("idle"), outline="", tags=(tag,))
+        self.diagram_orc_stage_items.append(
+            {
+                "title": title_id,
+                "primary": primary_id,
+                "secondary": secondary_id,
+                "status": status_id,
+            }
+        )
+
+    def _draw_oil_loop(self, canvas: tk.Canvas, stage_layout: list[tuple[int, int, int, int]]) -> None:
+        first_stage = stage_layout[0]
+        last_stage = stage_layout[-1]
+        first_center = int((first_stage[0] + first_stage[2]) / 2)
+        last_center = int((last_stage[0] + last_stage[2]) / 2)
+        top_y = first_stage[1]
+        bottom_y = first_stage[3]
+
         self._create_path_items(
             canvas,
             "oil_supply",
             [
-                (292, 72),
-                (392, 72),
-                (392, 120),
-                (286, 120),
+                (292, 78),
+                (320, 78),
+                (320, 52),
+                (last_center, 52),
+                (last_center, top_y),
             ],
             width=6,
             smooth=False,
         )
+        if len(stage_layout) > 1:
+            self._create_path_items(
+                canvas,
+                "oil_stage_transfer",
+                [
+                    (last_center, top_y),
+                    (last_center, 52),
+                    (first_center, 52),
+                    (first_center, top_y),
+                ],
+                width=6,
+                smooth=False,
+            )
         self._create_path_items(
             canvas,
             "oil_return",
             [
-                (272, 220),
-                (272, 232),
-                (350, 232),
+                (first_center, bottom_y),
+                (first_center, 228),
+                (350, 228),
                 (350, 224),
-                (392, 224),
-                (392, 120),
+                (272, 224),
+                (272, 220),
             ],
             width=6,
             smooth=False,
         )
 
-    def _draw_wf_loop(self, canvas: tk.Canvas) -> None:
+    def _draw_wf_loop(
+        self,
+        canvas: tk.Canvas,
+        stage_layout: list[tuple[int, int, int, int]],
+        turbine_x1: int,
+        turbine_x2: int,
+        regenerator_x1: int,
+        regenerator_x2: int,
+        condenser_x1: int,
+        condenser_x2: int,
+        organic_pump_cx: int,
+    ) -> None:
+        first_stage = stage_layout[0]
+        last_stage = stage_layout[-1]
+        first_center = int((first_stage[0] + first_stage[2]) / 2)
+        last_center = int((last_stage[0] + last_stage[2]) / 2)
+        top_y = first_stage[1]
+        bottom_y = first_stage[3]
+
+        self._create_path_items(
+            canvas,
+            "wf_cold",
+            [
+                (organic_pump_cx, 298),
+                (organic_pump_cx, 318),
+                (first_center - 20, 318),
+                (first_center - 20, bottom_y + 18),
+                (first_center, bottom_y),
+            ],
+            width=6,
+            smooth=False,
+        )
+        if len(stage_layout) > 1:
+            self._create_path_items(
+                canvas,
+                "wf_stage_transfer",
+                [
+                    (first_center, bottom_y),
+                    (first_center, 146),
+                    (last_center, 146),
+                    (last_center, bottom_y),
+                ],
+                width=6,
+                smooth=False,
+            )
         self._create_path_items(
             canvas,
             "wf_hot",
             [
-                (452, 92),
-                (492, 92),
-                (492, 72),
-                (540, 72),
+                (last_center, top_y),
+                (last_center, 94),
+                (turbine_x1, 94),
             ],
             width=6,
             smooth=False,
@@ -849,43 +1191,29 @@ class WHRSOrcApp(tk.Tk):
             canvas,
             "wf_reject",
             [
-                (540, 138),
-                (540, 206),
-                (620, 206),
-                (620, 250),
-                (620, 275),
-                (490, 275),
+                (turbine_x2, 138),
+                (turbine_x2, 206),
+                ((regenerator_x1 + regenerator_x2) // 2, 206),
+                ((regenerator_x1 + regenerator_x2) // 2, 250),
+                ((condenser_x1 + condenser_x2) // 2, 275),
+                (organic_pump_cx + 22, 275),
             ],
             width=6,
             smooth=False,
         )
-        self._create_path_items(
-            canvas,
-            "wf_cold",
-            [
-                (490, 275),
-                (490, 312),
-                (428, 312),
-                (428, 120),
-                (350, 120),
-            ],
-            width=6,
-            smooth=False,
-        )
-        for index, x in enumerate([578, 602, 626]):
+        for index, x_pos in enumerate([regenerator_x1 + 34, regenerator_x1 + 68, regenerator_x1 + 102]):
             tag = f"wf_regen_branch_{index}"
-            self._create_path_items(canvas, tag, [(x, 250), (x, 272)], width=4, smooth=False)
+            self._create_path_items(canvas, tag, [(x_pos, 250), (x_pos, 272)], width=4, smooth=False)
 
-    def _draw_power_path(self, canvas: tk.Canvas, color: str) -> None:
+    def _draw_power_path(self, canvas: tk.Canvas, color: str, generator_x1: int, generator_x2: int) -> None:
         self._create_path_items(
             canvas,
             "power_export",
             [
-                (580, 108),
-                (607, 108),
-                (698, 108),
-                (760, 108),
-                (760, 48),
+                (generator_x1, 108),
+                (generator_x2, 108),
+                (1036, 108),
+                (1036, 48),
             ],
             width=5,
             smooth=False,
@@ -895,19 +1223,19 @@ class WHRSOrcApp(tk.Tk):
             canvas,
             "power_auxiliary",
             [
-                (698, 108),
-                (698, 154),
-                (760, 154),
+                (generator_x2, 108),
+                (generator_x2, 154),
+                (1036, 154),
             ],
             width=5,
             smooth=False,
             fixed_color=color,
         )
-        self._draw_grid_icon(canvas, 738, 20, color)
-        self._draw_factory_icon(canvas, 726, 160, color)
-        canvas.create_line(640, 55, 646, 45, fill=color, width=3)
-        canvas.create_line(650, 55, 656, 45, fill=color, width=3)
-        canvas.create_line(632, 64, 637, 54, fill=color, width=3)
+        self._draw_grid_icon(canvas, 1014, 20, color)
+        self._draw_factory_icon(canvas, 1002, 160, color)
+        canvas.create_line(generator_x1 - 12, 55, generator_x1 - 6, 45, fill=color, width=3)
+        canvas.create_line(generator_x1 - 2, 55, generator_x1 + 4, 45, fill=color, width=3)
+        canvas.create_line(generator_x1 - 20, 64, generator_x1 - 15, 54, fill=color, width=3)
 
     def _draw_grid_icon(self, canvas: tk.Canvas, x: int, y: int, color: str) -> None:
         canvas.create_polygon(x + 20, y, x + 34, y + 18, x + 6, y + 18, fill="", outline=color, width=3)
@@ -964,10 +1292,12 @@ class WHRSOrcApp(tk.Tk):
 
         self._paint_stream_path("exhaust_main", "exhaust", exhaust_in, exhaust_out)
         self._paint_stream_path("oil_supply", "oil", oil_hot, oil_delivery)
+        self._paint_stream_path("oil_stage_transfer", "oil", oil_hot, oil_return)
         self._paint_stream_path("oil_return", "oil", max(oil_return + 10.0, oil_return), oil_return)
         self._paint_stream_path("wf_hot", "working_fluid", max(wf_hot - 12.0, wf_in), wf_hot)
         self._paint_stream_path("wf_reject", "working_fluid", wf_hot, wf_condense)
         self._paint_stream_path("wf_cold", "working_fluid", wf_condense, wf_in)
+        self._paint_stream_path("wf_stage_transfer", "working_fluid", wf_in, wf_hot)
         for branch_key in [name for name in self.diagram_stream_items if name.startswith("wf_regen_branch_")]:
             self._paint_stream_path(branch_key, "working_fluid", wf_condense, max(wf_condense - 10.0, wf_in))
         self._paint_stream_path("power_export", "power", 1.0, 1.0)
@@ -991,6 +1321,9 @@ class WHRSOrcApp(tk.Tk):
             canvas.tag_bind(tag, "<Button-1>", lambda _event, selected_key=key: self._select_equipment_detail(selected_key))
             canvas.tag_bind(tag, "<Enter>", lambda _event: canvas.configure(cursor="hand2"))
             canvas.tag_bind(tag, "<Leave>", lambda _event: canvas.configure(cursor=""))
+        canvas.tag_bind("stage_heat_exchanger", "<Button-1>", lambda _event: self._select_equipment_detail("heat_exchanger"))
+        canvas.tag_bind("stage_heat_exchanger", "<Enter>", lambda _event: canvas.configure(cursor="hand2"))
+        canvas.tag_bind("stage_heat_exchanger", "<Leave>", lambda _event: canvas.configure(cursor=""))
 
     def _select_equipment_detail(self, key: str) -> None:
         self.selected_equipment_key = key
@@ -1130,6 +1463,17 @@ class WHRSOrcApp(tk.Tk):
         return min(delivery, self._effective_oil_hot_temp_c())
 
     def _effective_wf_hot_temp_c(self) -> float:
+        if (
+            self.orc_heat_mode_var.get() == OrcScreeningHeatMode.SINGLE_PHASE_TEMPERATURE_GAIN.value
+            and self._active_orc_stage_count() > 1
+        ):
+            for index in range(self._active_orc_stage_count() - 1, -1, -1):
+                raw = self.orc_stage_fields[index]["value_var"].get().strip()
+                if raw:
+                    try:
+                        return convert_to_base("temperature", float(raw), self.orc_stage_fields[index]["unit_var"].get())
+                    except ValueError:
+                        break
         target = self.orc_target_wf_outlet_var.get().strip()
         if self.orc_heat_mode_var.get() == OrcScreeningHeatMode.SINGLE_PHASE_TEMPERATURE_GAIN.value and target:
             return float(target)
@@ -1375,6 +1719,7 @@ class WHRSOrcApp(tk.Tk):
     def _load_defaults(self) -> None:
         self._apply_wf_preset()
         self._apply_oil_preset()
+        self._reset_orc_stage_defaults()
         self._reset_outputs()
         self._bind_base_state_sync()
         self._bind_dynamic_behavior()
@@ -1462,12 +1807,32 @@ class WHRSOrcApp(tk.Tk):
         self.wf_max_outlet_var.set(self._format_base_value(case.wf_max_outlet_temp_c))
 
         self.orc_heat_mode_var.set(case.orc_heat_mode.value)
+        self.orc_heater_stage_count_var.set(str(case.orc_heater_stage_count))
+        for index, stage_field in enumerate(self.orc_stage_fields):
+            if index < len(case.orc_heater_stages):
+                stage = case.orc_heater_stages[index]
+                stage_field["name_var"].set(stage.stage_name)
+                if stage.duty_fraction is not None:
+                    stage_field["unit_var"].set("%")
+                    stage_field["value_var"].set(self._format_base_value(100.0 * stage.duty_fraction))
+                elif stage.target_wf_outlet_temp_c is not None:
+                    stage_field["unit_var"].set("degC")
+                    stage_field["value_var"].set(self._format_base_value(stage.target_wf_outlet_temp_c))
+                elif stage.heat_input_w is not None:
+                    stage_field["unit_var"].set("kW")
+                    stage_field["value_var"].set(self._format_base_value(stage.heat_input_w / 1000.0))
+                else:
+                    stage_field["value_var"].set("")
+            else:
+                stage_field["name_var"].set("")
+                stage_field["value_var"].set("")
         self.orc_target_wf_outlet_var.set(self._format_base_value(case.orc_target_wf_outlet_temp_c))
         self.orc_known_heat_input_var.set(self._format_base_value(case.orc_known_heat_input_w))
         self.orc_min_approach_var.set(self._format_base_value(case.min_orc_approach_k))
         self.orc_power_mode_var.set(case.orc_power_mode.value)
         self.eta_orc_gross_var.set(self._format_base_value(case.eta_orc_gross_target))
         self.gross_power_target_var.set(self._format_base_value(case.gross_electric_power_target_w))
+        self._last_orc_stage_layout = (self.orc_heat_mode_var.get(), self.orc_heater_stage_count_var.get())
 
         if case.boiler_design_driver is not None and case.boiler_design_target_si is not None:
             display_target = design_target_display_value(case)
@@ -1485,6 +1850,7 @@ class WHRSOrcApp(tk.Tk):
             self.boiler_driver_var,
             self.loop_mode_var,
             self.orc_heat_mode_var,
+            self.orc_heater_stage_count_var,
             self.orc_power_mode_var,
             self.oil_name_var,
             self.wf_name_var,
@@ -1519,6 +1885,11 @@ class WHRSOrcApp(tk.Tk):
             driver = BoilerDesignDriver(current_driver_value)
             self.design_target_var.set(self._format_base_value(design_target_default_value(driver)))
             self._last_design_target_driver = current_driver_value
+        current_orc_stage_layout = (self.orc_heat_mode_var.get(), self.orc_heater_stage_count_var.get())
+        needs_stage_rebuild = current_orc_stage_layout != self._last_orc_stage_layout
+        if needs_stage_rebuild:
+            self._reset_orc_stage_defaults()
+            self._last_orc_stage_layout = current_orc_stage_layout
         state = build_ui_behavior_state(
             BoilerMode(self.boiler_mode_var.get()),
             BoilerDesignDriver(current_driver_value),
@@ -1537,24 +1908,26 @@ class WHRSOrcApp(tk.Tk):
         self._set_entry_state(self.oil_outlet_entry, state.oil_outlet_enabled)
         self._set_entry_state(self.loop_heat_loss_entry, state.loop_heat_loss_enabled)
         self._set_entry_state(self.loop_target_delivery_entry, state.loop_target_delivery_enabled)
-        self._set_entry_state(self.orc_target_wf_entry, state.orc_target_wf_outlet_enabled)
-        self._set_entry_state(self.orc_known_heat_entry, state.orc_known_heat_input_enabled)
         self._set_entry_state(self.orc_efficiency_entry, state.orc_efficiency_enabled)
         self._set_entry_state(self.gross_power_target_entry, state.gross_power_target_enabled)
         for entry in self.oil_property_entries:
             self._set_entry_state(entry, state.oil_manual_properties_enabled)
         for entry in self.wf_property_entries:
             self._set_entry_state(entry, state.wf_manual_properties_enabled)
+        self._refresh_orc_stage_editor()
         self._set_diagram_field_enabled("exhaust_outlet_temp", state.exhaust_outlet_enabled)
         self._set_diagram_field_enabled("oil_outlet_temp", state.oil_outlet_enabled)
         self._set_diagram_field_enabled("loop_heat_loss", state.loop_heat_loss_enabled)
         self._set_diagram_field_enabled("loop_target_delivery_temp", state.loop_target_delivery_enabled)
-        self._set_diagram_field_enabled("orc_target_wf_outlet", state.orc_target_wf_outlet_enabled)
-        self._set_diagram_field_enabled("orc_known_heat_input", state.orc_known_heat_input_enabled)
+        single_stage = self._active_orc_stage_count() == 1
+        self._set_diagram_field_enabled("orc_target_wf_outlet", state.orc_target_wf_outlet_enabled and single_stage)
+        self._set_diagram_field_enabled("orc_known_heat_input", state.orc_known_heat_input_enabled and single_stage)
         self._set_diagram_field_enabled("eta_orc_gross", state.orc_efficiency_enabled)
         self._set_diagram_field_enabled("gross_power_target", state.gross_power_target_enabled)
         self._set_design_target_field_enabled(state.design_target.enabled)
         self._sync_design_target_field()
+        if needs_stage_rebuild:
+            self._rebuild_process_canvas()
 
     def _set_entry_state(self, entry: ttk.Entry | None, enabled: bool) -> None:
         if entry is None:
@@ -1606,6 +1979,16 @@ class WHRSOrcApp(tk.Tk):
         if driver is not None:
             raw_target = float(self.design_target_var.get())
             design_target_si = self._convert_design_target_to_si(driver, raw_target)
+        orc_heat_mode = OrcScreeningHeatMode(self.orc_heat_mode_var.get())
+        orc_heater_stages = self._build_orc_stage_inputs_from_ui()
+        stage_count = self._active_orc_stage_count()
+        derived_target_wf_outlet = float(self.orc_target_wf_outlet_var.get())
+        derived_known_heat_input_w = float(self.orc_known_heat_input_var.get())
+        if stage_count > 1:
+            if orc_heat_mode is OrcScreeningHeatMode.SINGLE_PHASE_TEMPERATURE_GAIN:
+                derived_target_wf_outlet = orc_heater_stages[-1].target_wf_outlet_temp_c or derived_target_wf_outlet
+            elif orc_heat_mode is OrcScreeningHeatMode.KNOWN_ORC_HEAT_INPUT:
+                derived_known_heat_input_w = sum(stage.heat_input_w or 0.0 for stage in orc_heater_stages)
 
         return ScreeningCaseInputs(
             case_name=self.case_name_var.get(),
@@ -1636,9 +2019,11 @@ class WHRSOrcApp(tk.Tk):
             wf_inlet_temp_c=float(self.wf_inlet_temp_var.get()),
             wf_pressure_pa=float(self.wf_pressure_var.get()),
             wf_max_outlet_temp_c=float(self.wf_max_outlet_var.get()),
-            orc_heat_mode=OrcScreeningHeatMode(self.orc_heat_mode_var.get()),
-            orc_target_wf_outlet_temp_c=float(self.orc_target_wf_outlet_var.get()),
-            orc_known_heat_input_w=float(self.orc_known_heat_input_var.get()),
+            orc_heat_mode=orc_heat_mode,
+            orc_heater_stage_count=stage_count,
+            orc_heater_stages=orc_heater_stages,
+            orc_target_wf_outlet_temp_c=derived_target_wf_outlet,
+            orc_known_heat_input_w=derived_known_heat_input_w,
             min_orc_approach_k=float(self.orc_min_approach_var.get()),
             orc_power_mode=OrcScreeningPowerMode(self.orc_power_mode_var.get()),
             eta_orc_gross_target=float(self.eta_orc_gross_var.get()),
@@ -1732,6 +2117,65 @@ class WHRSOrcApp(tk.Tk):
             self.process_canvas.itemconfigure(items["primary"], text=stage.primary_text)
             self.process_canvas.itemconfigure(items["secondary"], text=stage.secondary_text)
             self.process_canvas.itemconfigure(items["status"], fill=status_color(stage.status))
+        self._apply_orc_stage_display()
+
+    def _apply_orc_stage_display(self) -> None:
+        if self.process_canvas is None or not self.diagram_orc_stage_items:
+            return
+        rows = self._build_orc_stage_display_rows()
+        for items, row in zip(self.diagram_orc_stage_items, rows):
+            self.process_canvas.itemconfigure(items["title"], text=row["title"])
+            self.process_canvas.itemconfigure(items["primary"], text=row["primary"])
+            self.process_canvas.itemconfigure(items["secondary"], text=row["secondary"])
+            self.process_canvas.itemconfigure(items["status"], fill=status_color(row["status"]))
+
+    def _build_orc_stage_display_rows(self) -> list[dict[str, str]]:
+        if self.last_result is not None and self.last_result.orc_heat_result is not None:
+            envelope = self.last_result.orc_heat_result
+            stage_breakdown = envelope.metadata.get("stage_breakdown", [])
+            if envelope.blocked_state.blocked:
+                reason = (envelope.blocked_state.reason or "Blocked.")[:28]
+                return [
+                    {
+                        "title": (self.orc_stage_fields[index]["name_var"].get().strip() or f"STAGE {index + 1}").upper(),
+                        "primary": "BLOCKED",
+                        "secondary": reason,
+                        "status": "blocked",
+                    }
+                    for index in range(self._active_orc_stage_count())
+                ]
+            if stage_breakdown:
+                rows: list[dict[str, str]] = []
+                for stage in stage_breakdown:
+                    q_stage_kw = float(stage.get("q_stage_w", 0.0)) / 1000.0
+                    wf_out_c = k_to_c(float(stage.get("wf_out_k", 273.15)))
+                    min_approach_k = float(stage.get("min_approach_k", 0.0))
+                    rows.append(
+                        {
+                            "title": str(stage.get("stage_name", "STAGE")).upper(),
+                            "primary": f"Q {q_stage_kw:,.0f} kW",
+                            "secondary": f"WF {wf_out_c:.0f} C | dT {min_approach_k:.1f} K",
+                            "status": str(envelope.status),
+                        }
+                    )
+                return rows
+
+        target_label, _helper, _units, _default_unit = self._orc_stage_presentation()
+        rows = []
+        for index in range(self._active_orc_stage_count()):
+            stage_field = self.orc_stage_fields[index]
+            title = (stage_field["name_var"].get().strip() or f"Stage {index + 1}").upper()
+            raw_value = stage_field["value_var"].get().strip() or "--"
+            unit = stage_field["unit_var"].get()
+            rows.append(
+                {
+                    "title": title,
+                    "primary": "Awaiting solve",
+                    "secondary": f"{target_label}: {raw_value} {unit}",
+                    "status": "idle",
+                }
+            )
+        return rows
 
     def _fill_from_result(self, result) -> None:
         self.current_equipment_details = build_equipment_details(result)
@@ -1805,11 +2249,24 @@ class WHRSOrcApp(tk.Tk):
             f"loop_mode = {case.loop_mode.value}",
             f"loop_target_delivery_temp_c = {case.loop_target_delivery_temp_c}",
             f"orc_heat_mode = {case.orc_heat_mode.value}",
+            f"orc_heater_stage_count = {case.orc_heater_stage_count}",
             f"orc_power_mode = {case.orc_power_mode.value}",
             "",
             "exhaust_composition =",
         ]
         lines.extend(f"  - {component}: {fraction}" for component, fraction in case.exhaust_components)
+        if case.orc_heater_stages:
+            lines.append("")
+            lines.append("orc_heater_stages =")
+            for stage in case.orc_heater_stages:
+                parts = [stage.stage_name]
+                if stage.duty_fraction is not None:
+                    parts.append(f"duty_fraction={stage.duty_fraction}")
+                if stage.target_wf_outlet_temp_c is not None:
+                    parts.append(f"target_wf_outlet_temp_c={stage.target_wf_outlet_temp_c}")
+                if stage.heat_input_w is not None:
+                    parts.append(f"heat_input_w={stage.heat_input_w}")
+                lines.append(f"  - {', '.join(parts)}")
         return "\n".join(lines)
 
     def _format_metric(self, key: str, value: float) -> str:

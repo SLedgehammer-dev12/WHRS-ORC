@@ -38,9 +38,11 @@
 - [x] Decide whether the live process diagram should evolve into an interactive detailed flowsheet.
 - [ ] Decide which remaining non-visual inputs should also move onto the process diagram:
   - [ ] fluid property override fields
+  - [ ] ORC heater stage inputs
 - [x] Define report sections and export priorities.
 - [x] Decide the first application shell.
 - [x] Add blocked-state surfacing and operator guidance in the UI shell.
 - [x] Add benchmark/preset case loading in the UI shell.
 - [x] Add report/export actions in the UI shell.
 - [x] Add animated flow direction and click-to-inspect equipment details to the process diagram.
+- [x] Add a user-selectable multi-stage ORC heater train skeleton.

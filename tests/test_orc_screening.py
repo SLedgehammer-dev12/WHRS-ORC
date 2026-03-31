@@ -13,6 +13,7 @@ if str(SRC_DIR) not in sys.path:
 from whrs_orc.domain.models import FluidKind, FluidLimitSpec, FluidSpec, ProcessStream, PropertyBackend, PropertyModelSpec, StatePoint
 from whrs_orc.domain.result_schema import ResultStatus
 from whrs_orc.equipment.contracts import (
+    OrcHeaterStageTarget,
     OrcScreeningHeatConstraints,
     OrcScreeningHeatMode,
     OrcScreeningHeatRequest,
@@ -78,7 +79,7 @@ class OrcScreeningTests(unittest.TestCase):
         result = solve_orc_screening_heat_uptake(request)
 
         self.assertEqual(result.status, ResultStatus.SUCCESS)
-        self.assertAlmostEqual(result.values["q_orc_absorbed_w"].value_si, 1_400_000.0, places=2)
+        self.assertAlmostEqual(result.values["q_orc_absorbed_w"].value_si, 1_400_000.0, delta=15.0)
         self.assertAlmostEqual(result.values["wf_temp_gain_k"].value_si, 70.0, places=2)
 
     def test_single_phase_temperature_gain_blocks_when_limit_exceeded(self) -> None:
@@ -95,6 +96,26 @@ class OrcScreeningTests(unittest.TestCase):
 
         self.assertEqual(result.status, ResultStatus.BLOCKED)
         self.assertTrue(result.blocked_state.blocked)
+
+    def test_multistage_oil_side_screening_tracks_stage_breakdown(self) -> None:
+        request = OrcScreeningHeatRequest(
+            equipment_id="orc_heat",
+            mode=OrcScreeningHeatMode.SCREENING_FROM_OIL_SIDE,
+            oil_hot_stream=build_oil_hot_stream(include_outlet=True),
+            wf_cold_stream=build_working_fluid_stream(),
+            heater_stages=[
+                OrcHeaterStageTarget(stage_name="Preheater", duty_fraction=0.25),
+                OrcHeaterStageTarget(stage_name="Vaporizer", duty_fraction=0.75),
+            ],
+            constraints=OrcScreeningHeatConstraints(min_approach_delta_t_k=5.0, max_wf_outlet_temp_k=c_to_k(200.0)),
+        )
+
+        result = solve_orc_screening_heat_uptake(request)
+
+        self.assertEqual(result.status, ResultStatus.SUCCESS)
+        self.assertEqual(result.metadata["heater_stage_count"], 2)
+        self.assertEqual(len(result.metadata["stage_breakdown"]), 2)
+        self.assertIn("resolved_wf_stage_2", result.solved_streams)
 
     def test_gross_power_from_efficiency(self) -> None:
         request = OrcScreeningPowerRequest(

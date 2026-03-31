@@ -17,6 +17,7 @@ The current release focuses on trustworthy thermal balances, blocked-state handl
 - Thermal-oil loop screening transport
 - ORC heat uptake screening
 - ORC gross power screening
+- Multi-stage ORC heater train with user-selectable stage count
 - Interactive process diagram with unit-aware input cards
 - Operator guidance for warnings and blocked states
 - Benchmark case loading
@@ -26,6 +27,7 @@ The current release focuses on trustworthy thermal balances, blocked-state handl
 - Enlarged schematic process view with fluid-specific cold-to-hot color palettes
 - Animated flow particles on the live process diagram
 - Clickable equipment detail card tied to process-stage selections
+- Dynamic ORC heater train layout with corrected thermal-oil routing
 
 ## Run the app
 

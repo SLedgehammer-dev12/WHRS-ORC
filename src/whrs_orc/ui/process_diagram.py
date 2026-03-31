@@ -131,7 +131,8 @@ def _build_heat_exchanger_stage(orc_heat: ResultEnvelope | None) -> DiagramStage
         return _blocked_stage("ORC Heater", orc_heat)
     heat_text = _metric_text(orc_heat, "q_orc_absorbed_w", _format_power)
     approach_text = _metric_text(orc_heat, "min_approach_k", _format_kelvin)
-    return DiagramStage("ORC Heater", f"Qorc {heat_text}", f"dTmin {approach_text}", _stage_status(orc_heat))
+    stage_count = int(orc_heat.metadata.get("heater_stage_count", 1) or 1)
+    return DiagramStage("ORC Heater", f"{stage_count} stage | Qorc {heat_text}", f"dTmin {approach_text}", _stage_status(orc_heat))
 
 
 def _build_turbine_stage(orc_heat: ResultEnvelope | None) -> DiagramStage:
@@ -229,4 +230,3 @@ def _shorten(text: str, limit: int) -> str:
     if len(clean) <= limit:
         return clean
     return clean[: limit - 3] + "..."
-

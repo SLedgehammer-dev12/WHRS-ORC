@@ -30,7 +30,7 @@ def build_idle_equipment_details() -> dict[str, EquipmentDetail]:
         "factory": EquipmentDetail("factory", "Factory", "idle", "Awaiting solve.", ("Exhaust source details will appear here.",)),
         "boiler": detail,
         "oil_pump": EquipmentDetail("oil_pump", "Oil Pump", "idle", "Awaiting solve.", ("Thermal-oil loop details will appear here.",)),
-        "heat_exchanger": EquipmentDetail("heat_exchanger", "ORC Heater", "idle", "Awaiting solve.", ("ORC heat uptake details will appear here.",)),
+        "heat_exchanger": EquipmentDetail("heat_exchanger", "ORC Heater Train", "idle", "Awaiting solve.", ("ORC heater-stage details will appear here.",)),
         "turbine": EquipmentDetail("turbine", "Turbine", "idle", "Awaiting solve.", ("Working-fluid heating summary will appear here.",)),
         "generator": EquipmentDetail("generator", "Generator", "idle", "Awaiting solve.", ("Gross power details will appear here.",)),
         "regenerator": EquipmentDetail("regenerator", "Regenerator", "idle", "Awaiting solve.", ("Future detailed ORC layer placeholder.",)),
@@ -120,15 +120,23 @@ def _orc_heat_detail(envelope: ResultEnvelope | None) -> EquipmentDetail:
         return build_idle_equipment_details()["heat_exchanger"]
     if envelope.blocked_state.blocked:
         return _blocked_detail("heat_exchanger", "ORC Heater", envelope)
+    stage_lines: list[str] = []
+    for stage in envelope.metadata.get("stage_breakdown", [])[:4]:
+        stage_lines.append(
+            f"{stage['stage_name']}: {float(stage['q_stage_w']) / 1000.0:,.1f} kW | WF out {k_to_c(float(stage['wf_out_k'])):.1f} C"
+        )
     return EquipmentDetail(
         key="heat_exchanger",
-        title="ORC Heater",
+        title="ORC Heater Train",
         status=str(envelope.status),
         summary=_metric_line(envelope, "q_orc_absorbed_w", "ORC absorbed heat"),
-        lines=(
-            _metric_line(envelope, "min_approach_k", "Minimum approach"),
-            _metric_line(envelope, "wf_temp_gain_k", "WF temperature gain"),
-            _warning_line(envelope),
+        lines=tuple(
+            [
+                _metric_line(envelope, "min_approach_k", "Minimum approach"),
+                _metric_line(envelope, "wf_temp_gain_k", "WF temperature gain"),
+                *stage_lines,
+                _warning_line(envelope),
+            ]
         ),
     )
 

@@ -8,7 +8,7 @@ import re
 
 from whrs_orc import __version__
 from whrs_orc.equipment.contracts import BoilerDesignDriver, BoilerMode, OrcScreeningHeatMode, OrcScreeningPowerMode, ThermalOilLoopMode
-from whrs_orc.solvers.screening_case import ScreeningCaseInputs
+from whrs_orc.solvers.screening_case import OrcHeaterStageInput, ScreeningCaseInputs
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +124,16 @@ def _case_inputs_to_dict(case: ScreeningCaseInputs) -> dict[str, object]:
         "wf_pressure_pa": case.wf_pressure_pa,
         "wf_max_outlet_temp_c": case.wf_max_outlet_temp_c,
         "orc_heat_mode": case.orc_heat_mode.value,
+        "orc_heater_stage_count": case.orc_heater_stage_count,
+        "orc_heater_stages": [
+            {
+                "stage_name": stage.stage_name,
+                "duty_fraction": stage.duty_fraction,
+                "target_wf_outlet_temp_c": stage.target_wf_outlet_temp_c,
+                "heat_input_w": stage.heat_input_w,
+            }
+            for stage in case.orc_heater_stages
+        ],
         "orc_target_wf_outlet_temp_c": case.orc_target_wf_outlet_temp_c,
         "orc_known_heat_input_w": case.orc_known_heat_input_w,
         "min_orc_approach_k": case.min_orc_approach_k,
@@ -167,6 +177,18 @@ def _case_inputs_from_dict(payload: dict[str, object]) -> ScreeningCaseInputs:
         wf_pressure_pa=float(payload["wf_pressure_pa"]),
         wf_max_outlet_temp_c=float(payload["wf_max_outlet_temp_c"]),
         orc_heat_mode=OrcScreeningHeatMode(str(payload["orc_heat_mode"])),
+        orc_heater_stage_count=int(payload.get("orc_heater_stage_count", 1)),
+        orc_heater_stages=[
+            OrcHeaterStageInput(
+                stage_name=str(item["stage_name"]),
+                duty_fraction=float(item["duty_fraction"]) if item.get("duty_fraction") is not None else None,
+                target_wf_outlet_temp_c=(
+                    float(item["target_wf_outlet_temp_c"]) if item.get("target_wf_outlet_temp_c") is not None else None
+                ),
+                heat_input_w=float(item["heat_input_w"]) if item.get("heat_input_w") is not None else None,
+            )
+            for item in payload.get("orc_heater_stages", [])
+        ],
         orc_target_wf_outlet_temp_c=float(payload["orc_target_wf_outlet_temp_c"]),
         orc_known_heat_input_w=float(payload["orc_known_heat_input_w"]),
         min_orc_approach_k=float(payload["min_orc_approach_k"]),

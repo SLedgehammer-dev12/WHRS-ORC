@@ -63,6 +63,11 @@
   - `src/whrs_orc/ui/benchmark_cases.py`
   - `src/whrs_orc/reporting/screening_report.py`
   - `src/whrs_orc/reporting/__init__.py`
+- Added persistence and logging support files:
+  - `src/whrs_orc/persistence/saved_cases.py`
+  - `src/whrs_orc/persistence/__init__.py`
+  - `src/whrs_orc/logging/run_logger.py`
+  - `src/whrs_orc/logging/__init__.py`
 - Added release-readiness root files:
   - `README.md`
   - `CHANGELOG.md`
@@ -115,6 +120,7 @@
   - boiler temperature-crossover cases now surface practical recovery suggestions in the app
 - The UI shell now also includes:
   - benchmark case loading from a prepared screening case library
+  - saved-case save/load flow based on `.whrs.json` documents
   - Markdown report export
   - JSON bundle export for solved cases
 - The first benchmark library now exists:
@@ -122,6 +128,10 @@
 - The first reporting layer now exists:
   - Markdown engineering summary export
   - JSON payload export containing case inputs, KPI summary, guidance, and module results
+- The first persistence and logging layer now exists:
+  - saved case documents with schema version, app version, source label, and note
+  - structured JSONL screening run logs under `data/logs/screening_runs.jsonl`
+  - UI wiring for `Vaka Ac`, `Vaka Kaydet`, and automatic solve logging
 - The project is now release-prepared at the local folder level:
   - README, changelog, package metadata, and ignore rules are present
 - The project is now published on GitHub:
@@ -142,6 +152,7 @@
   - diagram-level handling for remaining advanced inputs if needed
 - Prepare a clean local git repository and release asset bundle.
 - Continue with persistence, saved-case files, and structured logging now that the first public release is published.
+- Push the new persistence/logging slice to GitHub after review.
 
 ## Watchouts
 
@@ -152,8 +163,9 @@
 - Keep the UI state logic testable outside `tkinter`; do not bury decision rules only inside widgets.
 - Do not allow a negative exchanger temperature approach to pass as a merely cosmetic warning.
 - Do not mix this project into the large parent dirty worktree; use a nested standalone repo for release work.
+- Keep saved-case schema changes backward-conscious because `.whrs.json` files are now part of the user workflow.
 
 ## Tests run
 
 - `python -m unittest discover -s tests`
-- Status: `40 tests passed`
+- Status: `44 tests passed`

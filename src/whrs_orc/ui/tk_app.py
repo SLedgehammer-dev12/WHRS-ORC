@@ -6,6 +6,8 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
+from whrs_orc.logging.run_logger import log_screening_case_run
+from whrs_orc.persistence.saved_cases import default_saved_case_filename, read_saved_case, write_saved_case
 from whrs_orc.reporting.screening_report import (
     build_screening_markdown_report,
     build_screening_report_payload,
@@ -31,6 +33,11 @@ from whrs_orc.ui.presets import DEFAULT_EXHAUST_COMPOSITION, WORKING_FLUID_PRESE
 from whrs_orc.ui.view_model import build_ui_behavior_state
 
 
+APP_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_CASES_DIR = APP_ROOT / "data" / "cases"
+DEFAULT_LOG_PATH = APP_ROOT / "data" / "logs" / "screening_runs.jsonl"
+
+
 class WHRSOrcApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -38,6 +45,8 @@ class WHRSOrcApp(tk.Tk):
         self.geometry("1840x1180")
         self.minsize(1560, 960)
         self.configure(bg="#f3efe6")
+        DEFAULT_CASES_DIR.mkdir(parents=True, exist_ok=True)
+        DEFAULT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
         self.oil_provider = ThermalOilPropertyProvider()
         self.thermal_oils = self.oil_provider.list_thermal_oils()
@@ -77,7 +86,7 @@ class WHRSOrcApp(tk.Tk):
         self.study_mode_title_var = tk.StringVar(value="")
         self.study_mode_helper_var = tk.StringVar(value="")
         self.selected_benchmark_var = tk.StringVar(value="")
-        self.benchmark_summary_var = tk.StringVar(value="Hazir benchmark secerek tipik vaka verilerini forma yukleyebilirsiniz.")
+        self.benchmark_summary_var = tk.StringVar(value="Hazir benchmark secerek ya da kayitli vaka acarak forma veri yukleyebilirsiniz.")
         self.export_status_var = tk.StringVar(value="Henuz export olusturulmadi.")
         self.design_target_label_var = tk.StringVar(value="Tasarim hedefi")
         self.design_target_helper_var = tk.StringVar(value="")
@@ -196,6 +205,8 @@ class WHRSOrcApp(tk.Tk):
         actions = ttk.Frame(header, style="Panel.TFrame")
         actions.pack(side="right")
         ttk.Button(actions, text="Hesabi Calistir", style="Run.TButton", command=self._solve_case).pack(side="right")
+        ttk.Button(actions, text="Vaka Kaydet", command=self._save_current_case).pack(side="right", padx=(8, 0))
+        ttk.Button(actions, text="Vaka Ac", command=self._load_saved_case).pack(side="right", padx=(8, 0))
         ttk.Button(actions, text="Benchmark Yukle", command=self._load_selected_benchmark).pack(side="right", padx=(8, 0))
         ttk.Combobox(
             actions,
@@ -246,7 +257,7 @@ class WHRSOrcApp(tk.Tk):
             pady=(4, 0),
         )
         ttk.Separator(parent).grid(row=10, column=0, columnspan=2, sticky="ew", pady=10)
-        ttk.Label(parent, text="Benchmark notu", style="PanelTitle.TLabel").grid(row=11, column=0, columnspan=2, sticky="w")
+        ttk.Label(parent, text="Case note", style="PanelTitle.TLabel").grid(row=11, column=0, columnspan=2, sticky="w")
         ttk.Label(parent, textvariable=self.benchmark_summary_var, style="Soft.TLabel", wraplength=340, justify="left").grid(
             row=12,
             column=0,
@@ -949,7 +960,42 @@ class WHRSOrcApp(tk.Tk):
         benchmark = self.benchmark_cases_by_name[display_name]
         self._apply_screening_case_to_form(benchmark.inputs, benchmark.summary)
 
-    def _apply_screening_case_to_form(self, case: ScreeningCaseInputs, benchmark_summary: str) -> None:
+    def _save_current_case(self) -> None:
+        try:
+            case = self._build_case_inputs()
+        except Exception as exc:
+            messagebox.showerror("Save Error", str(exc))
+            return
+        path = filedialog.asksaveasfilename(
+            title="Vaka dosyasini kaydet",
+            initialdir=str(DEFAULT_CASES_DIR),
+            defaultextension=".whrs.json",
+            initialfile=default_saved_case_filename(case.case_name),
+            filetypes=[("WHRS case", "*.whrs.json"), ("JSON", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        source_label = self.selected_benchmark_var.get().strip() or "ui_form"
+        write_saved_case(path, case, source_label=source_label, note=self.benchmark_summary_var.get())
+        self.export_status_var.set(f"Vaka kaydedildi: {Path(path).name}")
+
+    def _load_saved_case(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Vaka dosyasi ac",
+            initialdir=str(DEFAULT_CASES_DIR),
+            filetypes=[("WHRS case", "*.whrs.json"), ("JSON", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        document = read_saved_case(path)
+        self.selected_benchmark_var.set("")
+        note = document.note or f"Kayitli vaka yuklendi: {Path(path).name}"
+        if document.source_label:
+            note = f"{note} | source: {document.source_label}"
+        self._apply_screening_case_to_form(document.case_inputs, note)
+        self.export_status_var.set(f"Vaka yuklendi: {Path(path).name}")
+
+    def _apply_screening_case_to_form(self, case: ScreeningCaseInputs, source_note: str) -> None:
         self.case_name_var.set(case.case_name)
         self.boiler_mode_var.set(case.boiler_mode.value)
         self.boiler_driver_var.set(
@@ -998,7 +1044,7 @@ class WHRSOrcApp(tk.Tk):
             if display_target is not None:
                 self.design_target_var.set(self._format_base_value(display_target))
 
-        self.benchmark_summary_var.set(benchmark_summary)
+        self.benchmark_summary_var.set(source_note)
         self._reset_outputs()
         self._sync_all_state_to_diagram_fields()
         self._refresh_form_state()
@@ -1194,6 +1240,11 @@ class WHRSOrcApp(tk.Tk):
         )
         self.last_case = case
         self.last_result = result
+        try:
+            log_screening_case_run(DEFAULT_LOG_PATH, case, result)
+            self.export_status_var.set(f"Solve ve log tamamlandi: {DEFAULT_LOG_PATH.name}")
+        except Exception as exc:
+            self.export_status_var.set(f"Solve tamamlandi, log yazilamadi: {exc}")
         if self.input_snapshot_text is not None:
             self.input_snapshot_text.insert("1.0", self._build_input_snapshot(case))
         self._apply_process_snapshot(build_process_snapshot(result))

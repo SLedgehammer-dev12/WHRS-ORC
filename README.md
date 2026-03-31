@@ -20,6 +20,8 @@ The current release focuses on trustworthy thermal balances, blocked-state handl
 - Interactive process diagram with unit-aware input cards
 - Operator guidance for warnings and blocked states
 - Benchmark case loading
+- Saved-case load and save flow with `.whrs.json` files
+- Structured screening run logging to `data/logs/screening_runs.jsonl`
 - Markdown and JSON report export
 
 ## Run the app

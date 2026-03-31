@@ -28,8 +28,8 @@
   - [x] thermal-oil loop
   - [x] ORC screening heat/power block
 - [x] Add plant-level screening orchestration.
-- [ ] Define logging schema and report metadata fields.
-- [ ] Decide persistence model for saved cases.
+- [x] Define logging schema and report metadata fields.
+- [x] Decide persistence model for saved cases.
 
 ## Priority 4 - prepare product experience
 
@@ -38,7 +38,7 @@
 - [ ] Decide whether the live process diagram should evolve into an interactive detailed flowsheet.
 - [ ] Decide which remaining non-visual inputs should also move onto the process diagram:
   - [ ] fluid property override fields
-- [ ] Define report sections and export priorities.
+- [x] Define report sections and export priorities.
 - [x] Decide the first application shell.
 - [x] Add blocked-state surfacing and operator guidance in the UI shell.
 - [x] Add benchmark/preset case loading in the UI shell.

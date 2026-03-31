@@ -92,6 +92,12 @@ The project priority is calculation correctness first, then operator usability, 
 - Report assembly rules were extracted into a pure helper layer:
   - `reporting/screening_report.py`
   - covered by dedicated unit tests
+- Saved-case persistence rules were extracted into a pure helper layer:
+  - `persistence/saved_cases.py`
+  - covered by dedicated unit tests
+- Structured solve-log rules were extracted into a pure helper layer:
+  - `logging/run_logger.py`
+  - covered by dedicated unit tests
 - The ORC side is intentionally simplified for the first release:
   - calculate absorbed ORC heat
   - calculate supported working-fluid temperature gain
@@ -109,8 +115,10 @@ The project priority is calculation correctness first, then operator usability, 
   - the blocked result carries operator-facing recovery guidance for the UI
 - The desktop UI now supports:
   - loading prepared benchmark cases directly into the form
+  - saving and loading `.whrs.json` case files
   - exporting a Markdown study report
   - exporting a JSON bundle with case inputs, guidance, KPIs, and result envelopes
+  - automatically appending screening run logs to `data/logs/screening_runs.jsonl`
 - The root folder now includes release-readiness files:
   - `README.md`
   - `CHANGELOG.md`
@@ -160,11 +168,11 @@ Translate the current screening baseline into a more complete engineering produc
 2. prepare benchmark cases and validation thresholds
 3. add saved benchmark datasets and reference cases to the test suite
 4. begin the next implementation slice:
-   - persistence and saved cases
-   - structured logging and saved-case schema
    - deeper interaction over the process diagram if the desktop shell remains the chosen path
    - decide whether manual fluid-property overrides should also move onto the diagram
    - maintain release discipline for future tags now that the first public repo and release exist
+   - define backward-compatibility rules for future saved-case schema changes
+   - decide whether export and solve logs should gain richer plant/site metadata
 
 ## Open decisions
 

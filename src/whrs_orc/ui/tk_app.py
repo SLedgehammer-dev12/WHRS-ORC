@@ -27,9 +27,11 @@ from whrs_orc.ui.diagram_units import (
     format_for_display,
     supported_units,
 )
+from whrs_orc.ui.equipment_details import build_equipment_details, build_idle_equipment_details, render_equipment_detail
 from whrs_orc.ui.operator_guidance import build_operator_guidance, render_operator_guidance
 from whrs_orc.ui.process_diagram import build_empty_process_snapshot, build_process_snapshot, status_color
 from whrs_orc.ui.presets import DEFAULT_EXHAUST_COMPOSITION, WORKING_FLUID_PRESETS
+from whrs_orc.ui.stream_motion import point_along_polyline, points_from_segments, polyline_length
 from whrs_orc.ui.stream_palette import colors_for_temperature_span, fluid_gradient, gradient_swatch_colors
 from whrs_orc.ui.view_model import build_ui_behavior_state
 
@@ -89,6 +91,8 @@ class WHRSOrcApp(tk.Tk):
         self.selected_benchmark_var = tk.StringVar(value="")
         self.benchmark_summary_var = tk.StringVar(value="Hazir benchmark secerek ya da kayitli vaka acarak forma veri yukleyebilirsiniz.")
         self.export_status_var = tk.StringVar(value="Henuz export olusturulmadi.")
+        self.selected_equipment_title_var = tk.StringVar(value="Selected Equipment")
+        self.selected_equipment_body_var = tk.StringVar(value="Solve a case and click an equipment block to inspect details.")
         self.design_target_label_var = tk.StringVar(value="Tasarim hedefi")
         self.design_target_helper_var = tk.StringVar(value="")
         self.diagram_headline_var = tk.StringVar(value="Solve a case to populate the process view.")
@@ -136,6 +140,8 @@ class WHRSOrcApp(tk.Tk):
         self.process_canvas: tk.Canvas | None = None
         self.last_case: ScreeningCaseInputs | None = None
         self.last_result: ScreeningCaseResult | None = None
+        self.selected_equipment_key = "boiler"
+        self.current_equipment_details = build_idle_equipment_details()
         self.design_target_label_widget: ttk.Label | None = None
         self.design_target_entry: ttk.Entry | None = None
         self.design_target_hint_label: ttk.Label | None = None
@@ -151,6 +157,10 @@ class WHRSOrcApp(tk.Tk):
         self.wf_property_entries: list[ttk.Entry] = []
         self.diagram_stage_items: dict[str, dict[str, int]] = {}
         self.diagram_stream_items: dict[str, list[int]] = {}
+        self.diagram_stream_particles: dict[str, int] = {}
+        self.diagram_stream_progress: dict[str, float] = {}
+        self.diagram_stream_speeds: dict[str, float] = {}
+        self._stream_animation_after_id: str | None = None
         self.diagram_input_fields: dict[str, dict[str, object]] = {}
         self.diagram_design_target_field: dict[str, object] | None = None
         self.diagram_composition_fields: dict[str, dict[str, object]] = {}
@@ -348,6 +358,17 @@ class WHRSOrcApp(tk.Tk):
         self._legend_item(legend, "Success", status_color("success"))
         self._legend_item(legend, "Warning", status_color("warning"))
         self._legend_item(legend, "Blocked", status_color("blocked"))
+
+        detail_card = ttk.Frame(parent, style="Card.TFrame", padding=12)
+        detail_card.pack(fill="x", pady=(0, 12))
+        ttk.Label(detail_card, textvariable=self.selected_equipment_title_var, style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            detail_card,
+            textvariable=self.selected_equipment_body_var,
+            style="Soft.TLabel",
+            wraplength=1320,
+            justify="left",
+        ).pack(anchor="w", pady=(6, 0))
 
         cards = ttk.Frame(parent, style="Panel.TFrame")
         cards.pack(fill="x")
@@ -695,6 +716,9 @@ class WHRSOrcApp(tk.Tk):
         canvas.configure(width=1720)
         self.diagram_stage_items = {}
         self.diagram_stream_items = {}
+        self.diagram_stream_particles = {}
+        self.diagram_stream_progress = {}
+        self.diagram_stream_speeds = {}
 
         exhaust_hot = fluid_gradient("exhaust").hot_color
         oil_hot = fluid_gradient("oil").hot_color
@@ -716,8 +740,8 @@ class WHRSOrcApp(tk.Tk):
         canvas.create_text(646, 174, text="Electric power export", fill="#6f7d75", font=("Segoe UI", 8))
         canvas.create_text(300, 260, text="Duty transfer zone", fill="#6f7d75", font=("Segoe UI", 8))
 
-        self._draw_factory_icon(canvas, 42, 110, metal)
-        self._register_stage_texts(canvas, "factory", "Factory", 72, 96, 72, 210, panel_bg, text_dark)
+        self._draw_factory_icon(canvas, 42, 110, metal, stage_tag="stage_factory")
+        self._register_stage_texts(canvas, "factory", "Factory", 72, 96, 72, 210, panel_bg, text_dark, stage_tag="stage_factory")
         self._draw_stack_icon(canvas, 332, 6, metal)
         self._draw_exhaust_loop(canvas)
         self._draw_oil_loop(canvas)
@@ -725,13 +749,13 @@ class WHRSOrcApp(tk.Tk):
         self._draw_power_path(canvas, power_color)
 
         self._register_round_rect_stage("boiler", canvas, 220, 58, 292, 220, "Boiler", metal, panel_bg, text_dark)
-        self._draw_boiler_core(canvas, 220, 58, 292, 220, exhaust_hot, oil_hot)
+        self._draw_boiler_core(canvas, 220, 58, 292, 220, exhaust_hot, oil_hot, stage_tag="stage_boiler")
         self._register_capsule_stage("heat_exchanger", canvas, 350, 70, 452, 120, "Heat Exchanger", metal, panel_bg, text_dark)
-        self._draw_heat_exchanger_core(canvas, 350, 70, 452, 120, wf_hot)
+        self._draw_heat_exchanger_core(canvas, 350, 70, 452, 120, wf_hot, stage_tag="stage_heat_exchanger")
         self._register_turbine_stage(canvas, 492, 76, 580, 138, "turbine", "Turbine", metal, panel_bg, text_dark)
         self._register_rect_stage("generator", canvas, 607, 83, 698, 131, "Generator", metal, panel_bg, text_dark)
         self._register_capsule_stage("regenerator", canvas, 550, 206, 690, 250, "Regenerator", metal, panel_bg, text_dark)
-        self._draw_heat_exchanger_core(canvas, 550, 206, 690, 250, wf_hot)
+        self._draw_heat_exchanger_core(canvas, 550, 206, 690, 250, wf_hot, stage_tag="stage_regenerator")
         self._register_condenser_stage(canvas, 575, 275, 685, 340, "condenser", "Air Condenser", metal, panel_bg, text_dark)
         self._register_pump_stage("oil_pump", canvas, 335, 226, "Oil Pump", metal, panel_bg, text_dark)
         self._register_pump_stage("organic_pump", canvas, 458, 298, "Organic Pump", metal, panel_bg, text_dark)
@@ -741,16 +765,19 @@ class WHRSOrcApp(tk.Tk):
         canvas.scale("all", 0, 0, 1.38, 1.38)
         canvas.move("all", 256, 86)
         self._update_process_stream_colors()
+        self._bind_stage_interactions()
+        self._restart_stream_animation()
 
-    def _draw_factory_icon(self, canvas: tk.Canvas, x: int, y: int, color: str) -> None:
-        canvas.create_rectangle(x, y + 20, x + 60, y + 72, fill=color, outline=color)
+    def _draw_factory_icon(self, canvas: tk.Canvas, x: int, y: int, color: str, *, stage_tag: str | None = None) -> None:
+        tags = (stage_tag,) if stage_tag else ()
+        canvas.create_rectangle(x, y + 20, x + 60, y + 72, fill=color, outline=color, tags=tags)
         for index in range(3):
             offset = x + 8 + index * 18
-            canvas.create_rectangle(offset, y, offset + 10, y + 20, fill=color, outline=color)
-            canvas.create_line(offset + 4, y - 10, offset + 12, y - 14, fill=color, width=3, smooth=True)
+            canvas.create_rectangle(offset, y, offset + 10, y + 20, fill=color, outline=color, tags=tags)
+            canvas.create_line(offset + 4, y - 10, offset + 12, y - 14, fill=color, width=3, smooth=True, tags=tags)
         for notch in range(4):
             nx = x + 6 + notch * 14
-            canvas.create_rectangle(nx, y + 48, nx + 8, y + 56, fill=canvas["bg"], outline=canvas["bg"])
+            canvas.create_rectangle(nx, y + 48, nx + 8, y + 56, fill=canvas["bg"], outline=canvas["bg"], tags=tags)
 
     def _draw_stack_icon(self, canvas: tk.Canvas, x: int, y: int, color: str) -> None:
         canvas.create_rectangle(x + 6, y + 8, x + 20, y + 44, fill="", outline=color, width=3)
@@ -945,6 +972,7 @@ class WHRSOrcApp(tk.Tk):
             self._paint_stream_path(branch_key, "working_fluid", wf_condense, max(wf_condense - 10.0, wf_in))
         self._paint_stream_path("power_export", "power", 1.0, 1.0)
         self._paint_stream_path("power_auxiliary", "power", 1.0, 1.0)
+        self._update_stream_particle_colors()
 
     def _paint_stream_path(self, key: str, fluid_key: str, start_temp_c: float, end_temp_c: float) -> None:
         item_ids = self.diagram_stream_items.get(key)
@@ -953,6 +981,134 @@ class WHRSOrcApp(tk.Tk):
         colors = colors_for_temperature_span(fluid_key, start_temp_c, end_temp_c, steps=len(item_ids))
         for item_id, color in zip(item_ids, colors):
             self.process_canvas.itemconfigure(item_id, fill=color)
+
+    def _bind_stage_interactions(self) -> None:
+        if self.process_canvas is None:
+            return
+        canvas = self.process_canvas
+        for key in self.diagram_stage_items:
+            tag = f"stage_{key}"
+            canvas.tag_bind(tag, "<Button-1>", lambda _event, selected_key=key: self._select_equipment_detail(selected_key))
+            canvas.tag_bind(tag, "<Enter>", lambda _event: canvas.configure(cursor="hand2"))
+            canvas.tag_bind(tag, "<Leave>", lambda _event: canvas.configure(cursor=""))
+
+    def _select_equipment_detail(self, key: str) -> None:
+        self.selected_equipment_key = key
+        self._refresh_selected_equipment_detail()
+
+    def _refresh_selected_equipment_detail(self) -> None:
+        detail = self.current_equipment_details.get(self.selected_equipment_key)
+        if detail is None:
+            detail = self.current_equipment_details.get("boiler") or build_idle_equipment_details()["boiler"]
+        self.selected_equipment_title_var.set(detail.title)
+        self.selected_equipment_body_var.set(render_equipment_detail(detail))
+
+    def _stream_points_for_key(self, key: str) -> tuple[tuple[float, float], ...]:
+        if self.process_canvas is None:
+            return ()
+        segments: list[tuple[float, float, float, float]] = []
+        for item_id in self.diagram_stream_items.get(key, []):
+            coords = self.process_canvas.coords(item_id)
+            if len(coords) < 4:
+                continue
+            segments.append((coords[0], coords[1], coords[-2], coords[-1]))
+        return points_from_segments(tuple(segments))
+
+    def _stream_fluid_key(self, key: str) -> str:
+        if key.startswith("exhaust"):
+            return "exhaust"
+        if key.startswith("oil"):
+            return "oil"
+        if key.startswith("wf"):
+            return "working_fluid"
+        return "power"
+
+    def _default_stream_speed(self, key: str) -> float:
+        if key.startswith("wf_regen_branch_"):
+            return 5.5
+        fluid_key = self._stream_fluid_key(key)
+        speed_map = {
+            "exhaust": 10.0,
+            "oil": 7.5,
+            "working_fluid": 8.5,
+            "power": 11.5,
+        }
+        return speed_map.get(fluid_key, 8.0)
+
+    def _stream_particle_color(self, key: str) -> str:
+        if self.process_canvas is not None:
+            item_ids = self.diagram_stream_items.get(key, [])
+            if item_ids:
+                sample_id = item_ids[min(len(item_ids) - 1, max(len(item_ids) // 2, 0))]
+                color = self.process_canvas.itemcget(sample_id, "fill")
+                if color:
+                    return color
+        return fluid_gradient(self._stream_fluid_key(key)).hot_color
+
+    def _update_stream_particle_colors(self) -> None:
+        if self.process_canvas is None:
+            return
+        for key, particle_id in self.diagram_stream_particles.items():
+            self.process_canvas.itemconfigure(particle_id, fill=self._stream_particle_color(key), outline="")
+
+    def _restart_stream_animation(self) -> None:
+        if self.process_canvas is None:
+            return
+        if self._stream_animation_after_id is not None:
+            try:
+                self.after_cancel(self._stream_animation_after_id)
+            except tk.TclError:
+                pass
+            self._stream_animation_after_id = None
+
+        canvas = self.process_canvas
+        for particle_id in self.diagram_stream_particles.values():
+            canvas.delete(particle_id)
+        self.diagram_stream_particles = {}
+        self.diagram_stream_progress = {}
+        self.diagram_stream_speeds = {}
+
+        for key in self.diagram_stream_items:
+            points = self._stream_points_for_key(key)
+            length = polyline_length(points)
+            if length <= 0.0:
+                continue
+            radius = 4 if key.startswith("wf_regen_branch_") else 5
+            x_pos, y_pos = point_along_polyline(points, 0.0)
+            particle_id = canvas.create_oval(
+                x_pos - radius,
+                y_pos - radius,
+                x_pos + radius,
+                y_pos + radius,
+                fill=self._stream_particle_color(key),
+                outline="",
+            )
+            self.diagram_stream_particles[key] = particle_id
+            self.diagram_stream_progress[key] = 0.0
+            self.diagram_stream_speeds[key] = self._default_stream_speed(key)
+
+        self._animate_stream_particles()
+
+    def _animate_stream_particles(self) -> None:
+        if self.process_canvas is None:
+            return
+
+        canvas = self.process_canvas
+        for key, particle_id in list(self.diagram_stream_particles.items()):
+            points = self._stream_points_for_key(key)
+            length = polyline_length(points)
+            if length <= 0.0:
+                continue
+            progress = (self.diagram_stream_progress.get(key, 0.0) + self.diagram_stream_speeds.get(key, 8.0)) % length
+            self.diagram_stream_progress[key] = progress
+            x_pos, y_pos = point_along_polyline(points, progress)
+            coords = canvas.coords(particle_id)
+            radius = 5.0
+            if len(coords) == 4:
+                radius = max((coords[2] - coords[0]) / 2.0, 3.0)
+            canvas.coords(particle_id, x_pos - radius, y_pos - radius, x_pos + radius, y_pos + radius)
+
+        self._stream_animation_after_id = self.after(90, self._animate_stream_particles)
 
     def _effective_exhaust_outlet_temp_c(self) -> float:
         raw = self.exhaust_outlet_temp_var.get().strip()
@@ -1004,8 +1160,9 @@ class WHRSOrcApp(tk.Tk):
         panel_bg: str,
         text_dark: str,
     ) -> None:
-        canvas.create_rectangle(x1, y1, x2, y2, fill=fill, outline=fill)
-        self._register_stage_texts(canvas, key, title, (x1 + x2) / 2, y1 - 18, (x1 + x2) / 2, y2 + 22, panel_bg, text_dark)
+        stage_tag = f"stage_{key}"
+        canvas.create_rectangle(x1, y1, x2, y2, fill=fill, outline=fill, tags=(stage_tag,))
+        self._register_stage_texts(canvas, key, title, (x1 + x2) / 2, y1 - 18, (x1 + x2) / 2, y2 + 22, panel_bg, text_dark, stage_tag=stage_tag)
 
     def _register_round_rect_stage(
         self,
@@ -1021,13 +1178,14 @@ class WHRSOrcApp(tk.Tk):
         text_dark: str,
     ) -> None:
         radius = 16
-        canvas.create_rectangle(x1 + radius, y1, x2 - radius, y2, fill=fill, outline=fill)
-        canvas.create_rectangle(x1, y1 + radius, x2, y2 - radius, fill=fill, outline=fill)
-        canvas.create_oval(x1, y1, x1 + radius * 2, y1 + radius * 2, fill=fill, outline=fill)
-        canvas.create_oval(x2 - radius * 2, y1, x2, y1 + radius * 2, fill=fill, outline=fill)
-        canvas.create_oval(x1, y2 - radius * 2, x1 + radius * 2, y2, fill=fill, outline=fill)
-        canvas.create_oval(x2 - radius * 2, y2 - radius * 2, x2, y2, fill=fill, outline=fill)
-        self._register_stage_texts(canvas, key, title, (x1 + x2) / 2, y1 - 18, (x1 + x2) / 2, y2 + 22, panel_bg, text_dark)
+        stage_tag = f"stage_{key}"
+        canvas.create_rectangle(x1 + radius, y1, x2 - radius, y2, fill=fill, outline=fill, tags=(stage_tag,))
+        canvas.create_rectangle(x1, y1 + radius, x2, y2 - radius, fill=fill, outline=fill, tags=(stage_tag,))
+        canvas.create_oval(x1, y1, x1 + radius * 2, y1 + radius * 2, fill=fill, outline=fill, tags=(stage_tag,))
+        canvas.create_oval(x2 - radius * 2, y1, x2, y1 + radius * 2, fill=fill, outline=fill, tags=(stage_tag,))
+        canvas.create_oval(x1, y2 - radius * 2, x1 + radius * 2, y2, fill=fill, outline=fill, tags=(stage_tag,))
+        canvas.create_oval(x2 - radius * 2, y2 - radius * 2, x2, y2, fill=fill, outline=fill, tags=(stage_tag,))
+        self._register_stage_texts(canvas, key, title, (x1 + x2) / 2, y1 - 18, (x1 + x2) / 2, y2 + 22, panel_bg, text_dark, stage_tag=stage_tag)
 
     def _register_capsule_stage(
         self,
@@ -1042,10 +1200,11 @@ class WHRSOrcApp(tk.Tk):
         panel_bg: str,
         text_dark: str,
     ) -> None:
-        canvas.create_rectangle(x1 + 22, y1, x2 - 22, y2, fill=fill, outline=fill)
-        canvas.create_oval(x1, y1, x1 + 44, y2, fill=fill, outline=fill)
-        canvas.create_oval(x2 - 44, y1, x2, y2, fill=fill, outline=fill)
-        self._register_stage_texts(canvas, key, title, (x1 + x2) / 2, y1 - 18, (x1 + x2) / 2, y2 + 22, panel_bg, text_dark)
+        stage_tag = f"stage_{key}"
+        canvas.create_rectangle(x1 + 22, y1, x2 - 22, y2, fill=fill, outline=fill, tags=(stage_tag,))
+        canvas.create_oval(x1, y1, x1 + 44, y2, fill=fill, outline=fill, tags=(stage_tag,))
+        canvas.create_oval(x2 - 44, y1, x2, y2, fill=fill, outline=fill, tags=(stage_tag,))
+        self._register_stage_texts(canvas, key, title, (x1 + x2) / 2, y1 - 18, (x1 + x2) / 2, y2 + 22, panel_bg, text_dark, stage_tag=stage_tag)
 
     def _register_turbine_stage(
         self,
@@ -1060,8 +1219,9 @@ class WHRSOrcApp(tk.Tk):
         panel_bg: str,
         text_dark: str,
     ) -> None:
-        canvas.create_polygon(x1, y1, x2, y1 + 10, x2, y2 - 10, x1, y2, fill=fill, outline=fill)
-        self._register_stage_texts(canvas, key, title, (x1 + x2) / 2, y1 - 18, (x1 + x2) / 2, y2 + 22, panel_bg, text_dark)
+        stage_tag = f"stage_{key}"
+        canvas.create_polygon(x1, y1, x2, y1 + 10, x2, y2 - 10, x1, y2, fill=fill, outline=fill, tags=(stage_tag,))
+        self._register_stage_texts(canvas, key, title, (x1 + x2) / 2, y1 - 18, (x1 + x2) / 2, y2 + 22, panel_bg, text_dark, stage_tag=stage_tag)
 
     def _register_condenser_stage(
         self,
@@ -1076,14 +1236,15 @@ class WHRSOrcApp(tk.Tk):
         panel_bg: str,
         text_dark: str,
     ) -> None:
-        canvas.create_polygon(x1, y1, x2, y1, x2 - 12, y2, x1 + 12, y2, fill=fill, outline=fill)
+        stage_tag = f"stage_{key}"
+        canvas.create_polygon(x1, y1, x2, y1, x2 - 12, y2, x1 + 12, y2, fill=fill, outline=fill, tags=(stage_tag,))
         for dx in [20, 42, 64, 86]:
-            canvas.create_line(x1 + dx, y1 + 18, x1 + dx, y2 - 14, fill=panel_bg, width=2)
+            canvas.create_line(x1 + dx, y1 + 18, x1 + dx, y2 - 14, fill=panel_bg, width=2, tags=(stage_tag,))
         for cx in [x1 + 28, x1 + 56, x1 + 84]:
-            canvas.create_oval(cx - 8, y2 - 8, cx + 8, y2 + 8, outline=panel_bg, width=2)
-            canvas.create_line(cx - 5, y2, cx + 5, y2, fill=panel_bg, width=2)
-            canvas.create_line(cx, y2 - 5, cx, y2 + 5, fill=panel_bg, width=2)
-        self._register_stage_texts(canvas, key, title, (x1 + x2) / 2, y1 - 18, (x1 + x2) / 2, y2 + 16, panel_bg, text_dark)
+            canvas.create_oval(cx - 8, y2 - 8, cx + 8, y2 + 8, outline=panel_bg, width=2, tags=(stage_tag,))
+            canvas.create_line(cx - 5, y2, cx + 5, y2, fill=panel_bg, width=2, tags=(stage_tag,))
+            canvas.create_line(cx, y2 - 5, cx, y2 + 5, fill=panel_bg, width=2, tags=(stage_tag,))
+        self._register_stage_texts(canvas, key, title, (x1 + x2) / 2, y1 - 18, (x1 + x2) / 2, y2 + 16, panel_bg, text_dark, stage_tag=stage_tag)
 
     def _register_pump_stage(
         self,
@@ -1096,24 +1257,90 @@ class WHRSOrcApp(tk.Tk):
         panel_bg: str,
         text_dark: str,
     ) -> None:
-        canvas.create_oval(cx - 14, cy - 14, cx + 14, cy + 14, fill=panel_bg, outline=fill, width=3)
-        canvas.create_line(cx - 10, cy + 8, cx + 10, cy - 8, fill=fill, width=3)
-        canvas.create_rectangle(cx - 18, cy + 14, cx + 18, cy + 20, fill=fill, outline=fill)
-        self._register_stage_texts(canvas, key, title, cx, cy + 28, cx, cy + 48, panel_bg, text_dark)
+        stage_tag = f"stage_{key}"
+        canvas.create_oval(cx - 14, cy - 14, cx + 14, cy + 14, fill=panel_bg, outline=fill, width=3, tags=(stage_tag,))
+        canvas.create_line(cx - 10, cy + 8, cx + 10, cy - 8, fill=fill, width=3, tags=(stage_tag,))
+        canvas.create_rectangle(cx - 18, cy + 14, cx + 18, cy + 20, fill=fill, outline=fill, tags=(stage_tag,))
+        self._register_stage_texts(canvas, key, title, cx, cy + 28, cx, cy + 48, panel_bg, text_dark, stage_tag=stage_tag)
 
-    def _draw_boiler_core(self, canvas: tk.Canvas, x1: int, y1: int, x2: int, y2: int, exhaust_color: str, oil_color: str) -> None:
+    def _draw_boiler_core(
+        self,
+        canvas: tk.Canvas,
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
+        exhaust_color: str,
+        oil_color: str,
+        *,
+        stage_tag: str | None = None,
+    ) -> None:
+        tags = (stage_tag,) if stage_tag else ()
         center_x = (x1 + x2) / 2
-        canvas.create_line(center_x - 10, y1 + 24, center_x + 8, y1 + 56, center_x - 10, y1 + 88, center_x + 8, y1 + 120, center_x - 10, y1 + 152, fill=exhaust_color, width=3)
-        canvas.create_line(center_x + 10, y1 + 24, center_x - 8, y1 + 56, center_x + 10, y1 + 88, center_x - 8, y1 + 120, center_x + 10, y1 + 152, fill=oil_color, width=3)
+        canvas.create_line(
+            center_x - 10,
+            y1 + 24,
+            center_x + 8,
+            y1 + 56,
+            center_x - 10,
+            y1 + 88,
+            center_x + 8,
+            y1 + 120,
+            center_x - 10,
+            y1 + 152,
+            fill=exhaust_color,
+            width=3,
+            tags=tags,
+        )
+        canvas.create_line(
+            center_x + 10,
+            y1 + 24,
+            center_x - 8,
+            y1 + 56,
+            center_x + 10,
+            y1 + 88,
+            center_x - 8,
+            y1 + 120,
+            center_x + 10,
+            y1 + 152,
+            fill=oil_color,
+            width=3,
+            tags=tags,
+        )
         for offset in [44, 76, 108, 140]:
-            canvas.create_line(x1 + 18, y1 + offset, x2 - 18, y1 + offset, fill="#dce7ef", width=1)
-        canvas.create_text(center_x, y1 + 168, text="multi-pass duty section", fill="#dce7ef", font=("Segoe UI", 6))
+            canvas.create_line(x1 + 18, y1 + offset, x2 - 18, y1 + offset, fill="#dce7ef", width=1, tags=tags)
+        canvas.create_text(center_x, y1 + 168, text="multi-pass duty section", fill="#dce7ef", font=("Segoe UI", 6), tags=tags)
 
-    def _draw_heat_exchanger_core(self, canvas: tk.Canvas, x1: int, y1: int, x2: int, y2: int, color: str) -> None:
+    def _draw_heat_exchanger_core(
+        self,
+        canvas: tk.Canvas,
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
+        color: str,
+        *,
+        stage_tag: str | None = None,
+    ) -> None:
+        tags = (stage_tag,) if stage_tag else ()
         mid_y = (y1 + y2) / 2
-        canvas.create_line(x1 + 16, mid_y, x1 + 34, mid_y - 14, x1 + 52, mid_y + 14, x1 + 70, mid_y - 14, x1 + 88, mid_y + 14, fill=color, width=3)
-        canvas.create_line(x1 + 18, y1 + 12, x2 - 18, y1 + 12, fill="#dce7ef", width=1)
-        canvas.create_line(x1 + 18, y2 - 12, x2 - 18, y2 - 12, fill="#dce7ef", width=1)
+        canvas.create_line(
+            x1 + 16,
+            mid_y,
+            x1 + 34,
+            mid_y - 14,
+            x1 + 52,
+            mid_y + 14,
+            x1 + 70,
+            mid_y - 14,
+            x1 + 88,
+            mid_y + 14,
+            fill=color,
+            width=3,
+            tags=tags,
+        )
+        canvas.create_line(x1 + 18, y1 + 12, x2 - 18, y1 + 12, fill="#dce7ef", width=1, tags=tags)
+        canvas.create_line(x1 + 18, y2 - 12, x2 - 18, y2 - 12, fill="#dce7ef", width=1, tags=tags)
 
     def _register_stage_texts(
         self,
@@ -1126,11 +1353,14 @@ class WHRSOrcApp(tk.Tk):
         text_y: float,
         panel_bg: str,
         text_dark: str,
+        *,
+        stage_tag: str | None = None,
     ) -> None:
-        canvas.create_text(title_x, title_y, text=title.upper(), fill=text_dark, font=("Segoe UI Semibold", 8))
-        primary_id = canvas.create_text(text_x, text_y, text="Awaiting solve", fill=text_dark, font=("Segoe UI Semibold", 8))
-        secondary_id = canvas.create_text(text_x, text_y + 14, text="", fill="#5f6f65", font=("Segoe UI", 8))
-        status_id = canvas.create_oval(text_x + 48, text_y - 8, text_x + 60, text_y + 4, fill=status_color("idle"), outline="")
+        tags = (stage_tag,) if stage_tag else ()
+        canvas.create_text(title_x, title_y, text=title.upper(), fill=text_dark, font=("Segoe UI Semibold", 8), tags=tags)
+        primary_id = canvas.create_text(text_x, text_y, text="Awaiting solve", fill=text_dark, font=("Segoe UI Semibold", 8), tags=tags)
+        secondary_id = canvas.create_text(text_x, text_y + 14, text="", fill="#5f6f65", font=("Segoe UI", 8), tags=tags)
+        status_id = canvas.create_oval(text_x + 48, text_y - 8, text_x + 60, text_y + 4, fill=status_color("idle"), outline="", tags=tags)
         self.diagram_stage_items[key] = {
             "primary": primary_id,
             "secondary": secondary_id,
@@ -1504,6 +1734,8 @@ class WHRSOrcApp(tk.Tk):
             self.process_canvas.itemconfigure(items["status"], fill=status_color(stage.status))
 
     def _fill_from_result(self, result) -> None:
+        self.current_equipment_details = build_equipment_details(result)
+        self._refresh_selected_equipment_detail()
         module_results = [
             ("Boiler", result.boiler_result),
             ("Oil Loop", result.loop_result),
@@ -1592,6 +1824,7 @@ class WHRSOrcApp(tk.Tk):
     def _reset_outputs(self) -> None:
         self.last_case = None
         self.last_result = None
+        self.current_equipment_details = build_idle_equipment_details()
         for var in self.kpi_labels.values():
             var.set("--")
         self.diagram_headline_var.set("Solve a case to populate the process view.")
@@ -1604,6 +1837,16 @@ class WHRSOrcApp(tk.Tk):
         self.summary_text.delete("1.0", "end")
         self.diagnostics_text.delete("1.0", "end")
         self._apply_process_snapshot(build_empty_process_snapshot())
+        self._refresh_selected_equipment_detail()
+
+    def destroy(self) -> None:
+        if self._stream_animation_after_id is not None:
+            try:
+                self.after_cancel(self._stream_animation_after_id)
+            except tk.TclError:
+                pass
+            self._stream_animation_after_id = None
+        super().destroy()
 
 
 def launch_app() -> None:

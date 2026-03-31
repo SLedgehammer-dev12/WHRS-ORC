@@ -70,8 +70,14 @@
   - `src/whrs_orc/logging/__init__.py`
 - Added UI stream-palette support:
   - `src/whrs_orc/ui/stream_palette.py`
+- Added UI interaction helpers:
+  - `src/whrs_orc/ui/equipment_details.py`
+  - `src/whrs_orc/ui/stream_motion.py`
 - Added new UI color/palette tests:
   - `tests/test_stream_palette.py`
+- Added new UI interaction tests:
+  - `tests/test_equipment_details.py`
+  - `tests/test_stream_motion.py`
 - Added release-readiness root files:
   - `README.md`
   - `CHANGELOG.md`
@@ -141,6 +147,10 @@
   - more detailed boiler, condenser, pump, and stack drawing
   - fluid-specific cold-to-hot gradients so exhaust, thermal oil, and ORC fluid are not visually confused
   - legend now shows per-fluid cold-to-hot palette ramps instead of single flat colors
+- The process diagram is now more dynamic:
+  - animated flow particles move along exhaust, oil, ORC, and power paths
+  - clicking an equipment block updates a dedicated detail card with status, warnings, and key metrics
+  - internal equipment artwork now remains clickable because stage interactions are tagged consistently
 - The project is now release-prepared at the local folder level:
   - README, changelog, package metadata, and ignore rules are present
 - The project is now published on GitHub:
@@ -154,15 +164,12 @@
 
 ## Next
 
-- Prepare report payload assembly and export structure on top of the screening case result.
-- Add saved-case persistence and logging payload definitions.
 - Refine the UI shell with:
-  - richer detailed flowsheet interactions beyond the current screening diagram
+  - richer hover/popover behavior beyond the current click-to-inspect detail card
+  - selection highlighting on the active equipment block
   - diagram-level handling for remaining advanced inputs if needed
-- Prepare a clean local git repository and release asset bundle.
-- Continue with persistence, saved-case files, and structured logging now that the first public release is published.
-- Push the new persistence/logging slice to GitHub after review.
-- Consider the next UI pass for animated flow direction and click/hover equipment detail now that fluid palettes and larger schematic layout exist.
+- Define backward-compatibility rules for future saved-case schema changes.
+- Decide whether export and solve logs should gain richer plant/site metadata.
 
 ## Watchouts
 
@@ -178,4 +185,4 @@
 ## Tests run
 
 - `python -m unittest discover -s tests`
-- Status: `48 tests passed`
+- Status: `53 tests passed`

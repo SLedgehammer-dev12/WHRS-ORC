@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added animated flow particles to the live process diagram.
+- Added clickable equipment detail inspection on the schematic.
+- Added pure helper modules for stream motion and equipment-detail rendering.
+- Expanded test coverage for stream-motion math and equipment-detail summaries.
+
 ## 0.2.0 - 2026-03-30
 
 - Added benchmark case loading for repeatable screening studies.

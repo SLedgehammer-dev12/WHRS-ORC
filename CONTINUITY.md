@@ -1,6 +1,6 @@
 # Continuity
 
-Last updated: 2026-03-30
+Last updated: 2026-03-31
 
 ## Project intent
 
@@ -125,6 +125,12 @@ The project priority is calculation correctness first, then operator usability, 
   - a larger and more detailed process schematic
   - fluid-specific cold-to-hot palettes for exhaust gas, thermal oil, and working fluid
   - palette legend ramps so users can distinguish fluids without color confusion
+  - animated flow particles along the process paths
+  - clickable equipment blocks that populate a dedicated equipment-detail card
+- Diagram interaction helpers were extracted into pure helper layers:
+  - `ui/equipment_details.py`
+  - `ui/stream_motion.py`
+  - covered by dedicated unit tests
 - The root folder now includes release-readiness files:
   - `README.md`
   - `CHANGELOG.md`
@@ -179,7 +185,7 @@ Translate the current screening baseline into a more complete engineering produc
     - maintain release discipline for future tags now that the first public repo and release exist
     - define backward-compatibility rules for future saved-case schema changes
     - decide whether export and solve logs should gain richer plant/site metadata
-    - add animated flow direction and equipment detail interactions on top of the new palette-aware schematic
+    - extend the new animated and clickable flowsheet with richer hover/popover behavior and selection highlighting
 
 ## Open decisions
 

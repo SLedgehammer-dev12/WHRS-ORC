@@ -24,6 +24,8 @@ The current release focuses on trustworthy thermal balances, blocked-state handl
 - Structured screening run logging to `data/logs/screening_runs.jsonl`
 - Markdown and JSON report export
 - Enlarged schematic process view with fluid-specific cold-to-hot color palettes
+- Animated flow particles on the live process diagram
+- Clickable equipment detail card tied to process-stage selections
 
 ## Run the app
 
